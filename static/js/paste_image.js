@@ -68,11 +68,11 @@ function updateCharCount(textarea) {
     if (countSpan) {
         countSpan.textContent = charCount;
         
-        // 如果超过200字，显示警告颜色
-        if (charCount >= 200) {
+        // 如果超过600字，显示警告颜色
+        if (charCount >= 600) {
             countSpan.style.color = 'red';
             countSpan.style.fontWeight = 'bold';
-        } else if (charCount >= 180) {
+        } else if (charCount >= 540) {
             countSpan.style.color = 'orange';
         } else {
             countSpan.style.color = '';

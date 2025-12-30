@@ -73,7 +73,7 @@ AI_GRADING_PROMPTS = {
 请以JSON格式返回结果:
 {
     "score": 分数(整数),
-    "feedback": "AI评语:主要得分点:[具体说明] 扣分点：[具体说明] 改进建议：[具体建议] 拓展知识：[相关拓展]"
+    "feedback": "主要得分点:[具体说明] 扣分点：[具体说明] 改进建议：[具体建议] 拓展知识：[相关拓展]"
 }""",
     
     'user_prompt_template': """题目：{question}

@@ -73,46 +73,7 @@
     </nav>
 
     <div class="row mt-4">
-        <!-- 左侧题库管理 -->
-        <div class="col-md-6">
-            <div class="card mb-4">
-                <div class="card-header">
-                    <h4>题库管理</h4>
-                </div>
-                <div class="card-body">
-                    <ul class="nav nav-tabs" id="bankTypeTabs" role="tablist">
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link active" id="tab-single" data-bs-toggle="tab" data-type="single_choice" type="button" role="tab">单选题</button>
-                        </li>
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link" id="tab-multi" data-bs-toggle="tab" data-type="multiple_choice" type="button" role="tab">多选题</button>
-                        </li>
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link" id="tab-judge" data-bs-toggle="tab" data-type="true_false" type="button" role="tab">判断题</button>
-                        </li>
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link" id="tab-fill" data-bs-toggle="tab" data-type="fill_blank" type="button" role="tab">填空题</button>
-                        </li>
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link" id="tab-short" data-bs-toggle="tab" data-type="short_answer" type="button" role="tab">简答题</button>
-                        </li>
-                    </ul>
-                    <div class="mt-3" id="bankListContainer">
-                        <!-- 题库列表JS渲染 -->
-                        </div>
-                    <div class="mt-3">
-                        <form id="importForm" action="{{ url_for('import_questions', question_type='single_choice') }}" method="post" enctype="multipart/form-data">
-                            <input type="hidden" name="question_type" id="importTypeInput" value="single_choice">
-                            <input type="hidden" name="bank_name" value="">
-                            <input type="file" id="csvFileInput" name="file" accept=".csv,.xlsx" style="display:none" required>
-                            <button type="button" id="importBtn" class="btn btn-primary w-100">导入题库</button>
-                        </form>
-                        </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- 右侧测试参数设置 -->
+        <!-- 左侧测试参数设置 -->
         <div class="col-md-6">
             <div class="card">
                 <div class="card-header">
@@ -253,7 +214,7 @@
                                 <div class="col-md-10">
                                     <div class="d-flex align-items-center">
                                         <div class="form-check me-3">
-                                            <input class="form-check-input" type="radio" name="fill_blank_grading_method" id="fill_blank_manual_grading" value="manual">
+                                            <input class="form-check-input" type="radio" name="fill_blank_grading_method" id="fill_blank_manual_grading" value="manual" checked>
                                             <label class="form-check-label" for="fill_blank_manual_grading">
                                                 人工批改
                                             </label>
@@ -330,6 +291,45 @@
                         </div>
 
                     </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- 右侧题库管理 -->
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h4>题库管理</h4>
+                </div>
+                <div class="card-body">
+                    <ul class="nav nav-tabs" id="bankTypeTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="tab-single" data-bs-toggle="tab" data-type="single_choice" type="button" role="tab">单选题</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="tab-multi" data-bs-toggle="tab" data-type="multiple_choice" type="button" role="tab">多选题</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="tab-judge" data-bs-toggle="tab" data-type="true_false" type="button" role="tab">判断题</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="tab-fill" data-bs-toggle="tab" data-type="fill_blank" type="button" role="tab">填空题</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="tab-short" data-bs-toggle="tab" data-type="short_answer" type="button" role="tab">简答题</button>
+                        </li>
+                    </ul>
+                    <div class="mt-3" id="bankListContainer">
+                        <!-- 题库列表JS渲染 -->
+                        </div>
+                    <div class="mt-3">
+                        <form id="importForm" action="{{ url_for('import_questions', question_type='single_choice') }}" method="post" enctype="multipart/form-data">
+                            <input type="hidden" name="question_type" id="importTypeInput" value="single_choice">
+                            <input type="hidden" name="bank_name" value="">
+                            <input type="file" id="csvFileInput" name="file" accept=".csv,.xlsx" style="display:none" required>
+                            <button type="button" id="importBtn" class="btn btn-primary w-100">导入题库</button>
+                        </form>
+                        </div>
                 </div>
             </div>
         </div>
@@ -739,9 +739,9 @@
                         fillBlankAiLabel.style.opacity = '1';
                         fillBlankAiLabel.style.color = '';
                         fillBlankStatusText.style.display = 'none';
-                        // AI配置测试通过，默认选择AI批改
-                        fillBlankAiRadio.checked = true;
-                        fillBlankManualRadio.checked = false;
+                        // 默认选择人工批改
+                        fillBlankManualRadio.checked = true;
+                        fillBlankAiRadio.checked = false;
                         
                         // 简答题AI批改可用
                         shortAnswerAiRadio.disabled = false;
@@ -759,7 +759,7 @@
                         fillBlankAiLabel.style.opacity = '0.5';
                         fillBlankAiLabel.style.color = '#6c757d';
                         fillBlankStatusText.style.display = 'none';
-                        // 如果AI不可用，默认选择人工批改
+                        // 默认选择人工批改
                         fillBlankManualRadio.checked = true;
                         fillBlankAiRadio.checked = false;
                         
@@ -862,4 +862,4 @@
         });
     </script>
 </body>
-</html> 
+</html>

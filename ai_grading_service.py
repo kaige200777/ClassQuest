@@ -144,7 +144,7 @@ class AIGradingService:
                            student_answer: str, max_score: int) -> Tuple[bool, Dict]:
         """批改简答题"""
         # 构建请求消息
-        user_prompt = self.prompts['user_prompt_template'].format(
+        user_prompt = self.prompts['short_answer']['user_prompt_template'].format(
             question=question,
             reference_answer=reference_answer or "无参考答案",
             max_score=max_score,
@@ -152,7 +152,7 @@ class AIGradingService:
         )
         
         # 根据不同的API提供商构建请求
-        success, result = self._make_api_request(user_prompt)
+        success, result = self._make_api_request(user_prompt, 'short_answer')
         
         if not success:
             return False, result
@@ -163,73 +163,16 @@ class AIGradingService:
     def _grade_fill_blank(self, question: str, reference_answer: str, 
                          student_answer: str, max_score: int) -> Tuple[bool, Dict]:
         """批改填空题"""
-        # 预处理答案，统一分隔符
-        def normalize_answers(text):
-            """标准化答案格式"""
-            if not text:
-                return []
-            # 统一分隔符为顿号
-            text = text.replace(',', '、').replace('，', '、')
-            return [item.strip() for item in text.split('、') if item.strip()]
+        # 构建请求消息
+        user_prompt = self.prompts['fill_blank']['user_prompt_template'].format(
+            question=question,
+            reference_answer=reference_answer,
+            max_score=max_score,
+            student_answer=student_answer
+        )
         
-        reference_items = normalize_answers(reference_answer)
-        student_items = normalize_answers(student_answer)
-        
-        # 构建填空题专用的提示词
-        fill_blank_prompt = f"""你是一位专业的教师，负责批改学生的填空题答案。请根据以下要求进行评分：
-
-题目分析：
-题目：{question}
-参考答案：{reference_answer}（共{len(reference_items)}个填空）
-学生答案：{student_answer}（共{len(student_items)}个填空）
-题目分值：{max_score}分
-
-评分原则：
-1. **顺序判断**：**默认所有填空题都需要按顺序填写**，除非题目中有明确说明不需要按顺序
-   - **默认规则**：填空题答案必须按照参考答案的顺序填写
-   - **例外情况**：只有当题目中明确包含以下关键词时才不要求顺序：
-     * "不限顺序"、"任意顺序"、"顺序不限"
-     * "可以任意填写"、"不分先后"
-     * "随意填写"、"自由填写"
-   - **特殊标识**：题目中如果有"（顺序不限）"、"（不分先后）"等明确标注
-
-2. **语义匹配**：
-   - 接受合理的同义词（如"电脑"与"计算机"）
-   - 接受标准缩写（如"CPU"与"中央处理器"）
-   - 接受不同表达方式（如"增加"与"提高"）
-   - 忽略大小写差异
-   - 忽略标点符号差异
-
-3. **评分策略**：
-   - 每个填空平均分配分数：{max_score}/{len(reference_items) if reference_items else 1} = {round(max_score/len(reference_items), 1) if reference_items else max_score}分/空
-   - 按正确填空数量比例给分
-   - 部分正确可以给部分分数
-
-4. **容错处理**：
-   - 轻微拼写错误可以接受
-   - 合理的表达变体可以接受
-   - 明显错误或无关内容不给分
-
-**重要提醒**：
-- 默认情况下，所有填空题都需要按顺序填写（order_required = true）
-- 只有当题目中明确说明不需要按顺序时，才设置 order_required = false
-- 如果学生答案顺序错误，应该相应扣分并在扣分理由中说明"顺序错误"
-
-请仔细分析题目内容，判断是否需要按顺序，然后进行评分。
-
-请以JSON格式返回结果:
-{{
-    "score": 分数(整数，0-{max_score}),
-    "feedback": "AI评语：[评分理由] 正确填空：[具体说明] 错误或缺失：[具体说明] 改进建议：[具体建议]",
-    "short_reason": "简短扣分理由（如：顺序错误、答案不准确、缺少关键词等，不超过20字）",
-    "order_required": true/false,
-    "correct_count": 正确填空数量,
-    "total_count": 总填空数量,
-    "analysis": "详细的逐项分析"
-}}"""
-
         # 发送API请求
-        success, result = self._make_api_request(fill_blank_prompt)
+        success, result = self._make_api_request(user_prompt, 'fill_blank')
         
         if not success:
             return False, result
@@ -237,24 +180,24 @@ class AIGradingService:
         # 解析AI返回的结果
         return self._parse_ai_response(result, max_score)
     
-    def _make_api_request(self, user_prompt: str) -> Tuple[bool, Dict]:
+    def _make_api_request(self, user_prompt: str, question_type: str = 'short_answer') -> Tuple[bool, Dict]:
         """发送API请求"""
         provider = self.config.get('provider', 'openai').lower()
         
         if provider == 'openai':
-            return self._openai_request(user_prompt)
+            return self._openai_request(user_prompt, question_type)
         elif provider == 'azure':
-            return self._azure_request(user_prompt)
+            return self._azure_request(user_prompt, question_type)
         elif provider == 'anthropic':
-            return self._anthropic_request(user_prompt)
+            return self._anthropic_request(user_prompt, question_type)
         elif provider == 'qianfan':
-            return self._qianfan_request(user_prompt)
+            return self._qianfan_request(user_prompt, question_type)
         elif provider == 'tongyi':
-            return self._tongyi_request(user_prompt)
+            return self._tongyi_request(user_prompt, question_type)
         else:
             return False, {"error_message": f"不支持的API提供商: {provider}"}
     
-    def _openai_request(self, user_prompt: str) -> Tuple[bool, Dict]:
+    def _openai_request(self, user_prompt: str, question_type: str = 'short_answer') -> Tuple[bool, Dict]:
         """OpenAI API请求"""
         url = self.config.get('base_url', 'https://api.openai.com/v1') + '/chat/completions'
         
@@ -265,17 +208,15 @@ class AIGradingService:
         
         data = {
             'model': self.config.get('model', 'gpt-3.5-turbo'),
-            'messages': [
-                {'role': 'system', 'content': self.prompts['system_prompt']},
-                {'role': 'user', 'content': user_prompt}
-            ],
+            'messages': [{'role': 'system', 'content': self.prompts[question_type]['system_prompt']},
+                        {'role': 'user', 'content': user_prompt}],
             'temperature': self.config.get('temperature', 0.3),
             'max_tokens': self.config.get('max_tokens', 1000)
         }
         
         return self._send_request(url, headers, data)
     
-    def _azure_request(self, user_prompt: str) -> Tuple[bool, Dict]:
+    def _azure_request(self, user_prompt: str, question_type: str = 'short_answer') -> Tuple[bool, Dict]:
         """Azure OpenAI API请求"""
         # Azure OpenAI的URL格式通常是：
         # https://{resource}.openai.azure.com/openai/deployments/{deployment}/chat/completions?api-version=2023-12-01-preview
@@ -289,17 +230,15 @@ class AIGradingService:
         }
         
         data = {
-            'messages': [
-                {'role': 'system', 'content': self.prompts['system_prompt']},
-                {'role': 'user', 'content': user_prompt}
-            ],
+            'messages': [{'role': 'system', 'content': self.prompts[question_type]['system_prompt']},
+                        {'role': 'user', 'content': user_prompt}],
             'temperature': self.config.get('temperature', 0.3),
             'max_tokens': self.config.get('max_tokens', 1000)
         }
         
         return self._send_request(base_url, headers, data)
     
-    def _anthropic_request(self, user_prompt: str) -> Tuple[bool, Dict]:
+    def _anthropic_request(self, user_prompt: str, question_type: str = 'short_answer') -> Tuple[bool, Dict]:
         """Anthropic Claude API请求"""
         url = self.config.get('base_url', 'https://api.anthropic.com/v1') + '/messages'
         
@@ -312,14 +251,12 @@ class AIGradingService:
         data = {
             'model': self.config.get('model', 'claude-3-sonnet-20240229'),
             'max_tokens': self.config.get('max_tokens', 1000),
-            'messages': [
-                {'role': 'user', 'content': f"{self.prompts['system_prompt']}\n\n{user_prompt}"}
-            ]
+            'messages': [{'role': 'user', 'content': f"{self.prompts[question_type]['system_prompt']}\n\n{user_prompt}"}]
         }
         
         return self._send_request(url, headers, data)
     
-    def _qianfan_request(self, user_prompt: str) -> Tuple[bool, Dict]:
+    def _qianfan_request(self, user_prompt: str, question_type: str = 'short_answer') -> Tuple[bool, Dict]:
         """百度千帆API请求"""
         # 千帆API需要access_token，这里简化处理
         # 实际使用时需要先获取access_token
@@ -330,9 +267,7 @@ class AIGradingService:
         }
         
         data = {
-            'messages': [
-                {'role': 'user', 'content': f"{self.prompts['system_prompt']}\n\n{user_prompt}"}
-            ],
+            'messages': [{'role': 'user', 'content': f"{self.prompts[question_type]['system_prompt']}\n\n{user_prompt}"}],
             'temperature': self.config.get('temperature', 0.3),
             'max_output_tokens': self.config.get('max_tokens', 1000)
         }
@@ -342,7 +277,7 @@ class AIGradingService:
         
         return self._send_request(url, headers, data)
     
-    def _tongyi_request(self, user_prompt: str) -> Tuple[bool, Dict]:
+    def _tongyi_request(self, user_prompt: str, question_type: str = 'short_answer') -> Tuple[bool, Dict]:
         """阿里通义千问API请求"""
         url = self.config.get('base_url', 'https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation')
         
@@ -354,10 +289,8 @@ class AIGradingService:
         data = {
             'model': self.config.get('model', 'qwen-turbo'),
             'input': {
-                'messages': [
-                    {'role': 'system', 'content': self.prompts['system_prompt']},
-                    {'role': 'user', 'content': user_prompt}
-                ]
+                'messages': [{'role': 'system', 'content': self.prompts[question_type]['system_prompt']},
+                            {'role': 'user', 'content': user_prompt}]
             },
             'parameters': {
                 'temperature': self.config.get('temperature', 0.3),
@@ -443,7 +376,7 @@ class AIGradingService:
                 
                 feedback = result.get('feedback', '').strip()
                 if not feedback:
-                    feedback = "AI评语：答案已评分，请参考参考答案进行对比学习。"
+                    feedback = "答案已评分，请参考参考答案进行对比学习。"
                 
                 # 构建返回结果
                 ai_result = {
@@ -502,7 +435,7 @@ class AIGradingService:
             
             return True, {
                 'score': score,
-                'feedback': f"AI评语：{feedback}"
+                'feedback': feedback
             }
             
         except Exception as e:

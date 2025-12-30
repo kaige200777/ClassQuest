@@ -231,8 +231,8 @@
                                 <div class="card-body">
                                     <div class="fw-bold question-content">{{ question.content|replace('\n', '<br>')|safe }}</div>
                                     <div class="form-group">
-                                        <textarea class="form-control allow-img-paste" name="answer_{{ question.id }}" rows="4" placeholder="答案最多200字，可粘贴一张图片" maxlength="200" data-question-id="{{ question.id }}" autocomplete="off"></textarea>
-                                        <small class="text-muted">已输入 <span id="charCount_{{ question.id }}">0</span>/200 字</small>
+                                        <textarea class="form-control allow-img-paste" name="answer_{{ question.id }}" rows="4" placeholder="答案最多600字，可粘贴一张图片" maxlength="600" data-question-id="{{ question.id }}" autocomplete="off"></textarea>
+                                        <small class="text-muted">已输入 <span id="charCount_{{ question.id }}">0</span>/600 字</small>
                                     </div>
                         </div>
                     </div>

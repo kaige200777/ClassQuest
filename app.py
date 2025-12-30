@@ -383,6 +383,63 @@ def student_start():
         return redirect(url_for('test'))
     return render_template('student_start.html')
 
+@app.route('/api/check_student_history', methods=['POST'])
+def check_student_history():
+    """检查学生是否有历史记录"""
+    data = request.get_json()
+    name = data.get('name')
+    class_number = data.get('class_number')
+    
+    if not name or not class_number:
+        return jsonify({'has_history': False})
+    
+    # 生成学生用户名
+    username = f"{name}_{class_number}"
+    # 检查是否存在学生记录
+    student = User.query.filter_by(username=username, role='student').first()
+    
+    if not student:
+        return jsonify({'has_history': False})
+    
+    # 检查是否有测试结果
+    has_history = TestResult.query.filter_by(student_id=student.id).count() > 0
+    
+    return jsonify({'has_history': has_history})
+
+@app.route('/student/history_login', methods=['POST'])
+def student_history_login():
+    """通过历史记录登录学生账户"""
+    name = request.form.get('name')
+    class_number = request.form.get('class_number')
+    
+    if not name or not class_number:
+        flash('姓名和班级号不能为空')
+        return redirect(url_for('index'))
+    
+    # 生成学生用户名
+    username = f"{name}_{class_number}"
+    # 检查是否存在学生记录
+    student = User.query.filter_by(username=username, role='student').first()
+    
+    if not student:
+        flash('未找到历史记录')
+        return redirect(url_for('index'))
+    
+    # 检查是否有测试结果
+    has_history = TestResult.query.filter_by(student_id=student.id).count() > 0
+    
+    if not has_history:
+        flash('未找到历史记录')
+        return redirect(url_for('index'))
+    
+    # 设置会话
+    session['student_id'] = student.id
+    session['student_name'] = name
+    session['class_number'] = class_number
+    session['role'] = 'student'
+    
+    return redirect(url_for('student_dashboard'))
+
 @app.route('/test')
 def test():
     if 'student_id' not in session:
@@ -530,8 +587,8 @@ def submit_test():
             question = Question.query.get(question_id)
             values = request.form.getlist(key)
             if question and question.question_type == 'short_answer':
-                # 简答题：直接保存原始内容（可能包含图片标签），不做大写转换
-                answers[question_id] = values[0].strip() if values else ''
+                # 简答题：直接保存原始内容（可能包含图片标签），不做大写转换，保留原始格式
+                answers[question_id] = values[0] if values else ''
             elif len(values) == 1:
                 answers[question_id] = values[0].strip().upper()
             else:
@@ -610,31 +667,28 @@ def submit_test():
                 # AI批改的简答题，分数已经在AI批改时计算，跳过传统计算
                 continue
                 
-            # 简答题答案可能包含HTML标签（图片等），直接获取原始内容
-            student_answer = request.form.get(f'answer_{question_id}', '').strip()
+            # 简答题答案可能包含HTML标签（图片等），直接使用answers字典中已有的原始内容
+            # 不再重新从表单获取，避免覆盖原始答案
+            student_answer = answers.get(question_id, '')
             
-            # 限制字数：移除HTML标签后不超过200字
+            # 限制字数：移除HTML标签后不超过600字
             import re
             text_only = re.sub(r'<[^>]*>', '', student_answer)
-            if len(text_only) > 200:
-                text_only = text_only[:200]
-                # 重新组合答案（保留图片但截断文本）
+            if len(text_only) > 600:
+                # 只处理文本部分，保留原始格式和图片
                 img_tags = re.findall(r'<img[^>]*>', student_answer)
                 if img_tags:
                     # 只保留最后一张图片
-                    student_answer = text_only + img_tags[-1]
+                    answers[question_id] = text_only[:600] + img_tags[-1]
                 else:
-                    student_answer = text_only
+                    answers[question_id] = text_only[:600]
             else:
                 # 限制图片数量：只保留最后一张
                 img_tags = re.findall(r'<img[^>]*>', student_answer)
                 if len(img_tags) > 1:
-                    # 移除所有图片，只保留最后一张
+                    # 移除所有图片，只保留最后一张，保留原始文本格式
                     text_without_imgs = re.sub(r'<img[^>]*>', '', student_answer)
-                    student_answer = text_without_imgs + img_tags[-1]
-            
-            # 将简答题数据添加到answers字典中（不进行大小写转换）
-            answers[question_id] = student_answer
+                    answers[question_id] = text_without_imgs + img_tags[-1]
     # 题目循环结束后，只插入一次TestResult
     ip_addr = request.headers.get('X-Forwarded-For', request.remote_addr)
     
@@ -1087,9 +1141,9 @@ def delete_test(test_id):
     try:
         # 删除测试相关的所有数据
         # 1. 删除简答题提交记录
-        TestResult.query.filter_by(test_id=test_id).all()
         for result in TestResult.query.filter_by(test_id=test_id).all():
             ShortAnswerSubmission.query.filter_by(result_id=result.id).delete()
+            FillBlankSubmission.query.filter_by(result_id=result.id).delete()
         
         # 2. 删除测试结果
         TestResult.query.filter_by(test_id=test_id).delete()
@@ -1278,7 +1332,6 @@ def grade_short_answer_by_result():
     question_id = request.form.get('question_id')
     score = int(request.form.get('score'))
     comment = request.form.get('comment')
-    test_id = request.form.get('test_id')
     
     try:
         # 更新简答题评分
@@ -1366,7 +1419,7 @@ def grade_short_answer_by_result():
             history.lowest_score = lowest_score
             db.session.commit()
         
-        # flash('评分成功')  # 移除成功提示
+        flash('评分成功', 'success')
     except Exception as e:
         db.session.rollback()
         flash(f'评分失败：{str(e)}')
@@ -1475,9 +1528,11 @@ def grade_fill_blank(question_id, result_id):
             history.total_score = total_score_sum
             history.average_score = average_score
             history.highest_score = highest_score
-            history.lowest_score = lowest_score
-            db.session.commit()
+        history.lowest_score = lowest_score
+        db.session.commit()
         
+        flash('评分成功', 'success')
+    
     except Exception as e:
         db.session.rollback()
         flash(f'评分失败：{str(e)}')
@@ -2374,34 +2429,73 @@ def save_test_settings():
             message = f'预设 "{preset_name}" 保存成功'
         
         # 同时创建/更新活跃的测试配置（用于存储 allow_student_choice 标志）
-        # 将之前的测试设为非活跃
-        Test.query.update({'is_active': False})
+        # 查询所有相同标题的测试记录
+        existing_tests = Test.query.filter_by(title=title).all()
         
-        # 创建新的测试配置
-        test = Test(
-            title=title,
-            single_choice_count=single_choice_count,
-            multiple_choice_count=multiple_choice_count,
-            true_false_count=true_false_count,
-            fill_blank_count=fill_blank_count,
-            short_answer_count=short_answer_count,
-            single_choice_score=single_choice_score,
-            multiple_choice_score=multiple_choice_score,
-            true_false_score=true_false_score,
-            fill_blank_score=fill_blank_score,
-            short_answer_score=short_answer_score,
-            total_score=total_score,
-            single_choice_bank_id=int(single_choice_bank_id) if single_choice_bank_id else None,
-            multiple_choice_bank_id=int(multiple_choice_bank_id) if multiple_choice_bank_id else None,
-            true_false_bank_id=int(true_false_bank_id) if true_false_bank_id else None,
-            fill_blank_bank_id=int(fill_blank_bank_id) if fill_blank_bank_id else None,
-            short_answer_bank_id=int(short_answer_bank_id) if short_answer_bank_id else None,
-            allow_student_choice=allow_student_choice,
-            short_answer_grading_method=short_answer_grading_method,
-            fill_blank_grading_method=fill_blank_grading_method,
-            is_active=True
-        )
-        db.session.add(test)
+        # 查找是否有任何一个相同标题的测试记录人次为0
+        test_to_update = None
+        for test in existing_tests:
+            test_count = TestResult.query.filter_by(test_id=test.id).count()
+            if test_count == 0:
+                test_to_update = test
+                break
+        
+        if test_to_update:
+            # 已经确认人次为0，直接更新测试记录
+                # 测试人数为0，直接更新现有测试
+            test_to_update.single_choice_count = single_choice_count
+            test_to_update.multiple_choice_count = multiple_choice_count
+            test_to_update.true_false_count = true_false_count
+            test_to_update.fill_blank_count = fill_blank_count
+            test_to_update.short_answer_count = short_answer_count
+            test_to_update.single_choice_score = single_choice_score
+            test_to_update.multiple_choice_score = multiple_choice_score
+            test_to_update.true_false_score = true_false_score
+            test_to_update.fill_blank_score = fill_blank_score
+            test_to_update.short_answer_score = short_answer_score
+            test_to_update.total_score = total_score
+            test_to_update.single_choice_bank_id = int(single_choice_bank_id) if single_choice_bank_id else None
+            test_to_update.multiple_choice_bank_id = int(multiple_choice_bank_id) if multiple_choice_bank_id else None
+            test_to_update.true_false_bank_id = int(true_false_bank_id) if true_false_bank_id else None
+            test_to_update.fill_blank_bank_id = int(fill_blank_bank_id) if fill_blank_bank_id else None
+            test_to_update.short_answer_bank_id = int(short_answer_bank_id) if short_answer_bank_id else None
+            test_to_update.allow_student_choice = allow_student_choice
+            test_to_update.short_answer_grading_method = short_answer_grading_method
+            test_to_update.fill_blank_grading_method = fill_blank_grading_method
+            test_to_update.is_active = True
+                
+                # 将其他测试设为非活跃
+            Test.query.filter(Test.id != test_to_update.id).update({'is_active': False})
+        else:
+            # 不存在相同标题的测试，创建新测试
+            # 将之前的测试设为非活跃
+            Test.query.update({'is_active': False})
+            
+            # 创建新的测试配置
+            test = Test(
+                title=title,
+                single_choice_count=single_choice_count,
+                multiple_choice_count=multiple_choice_count,
+                true_false_count=true_false_count,
+                fill_blank_count=fill_blank_count,
+                short_answer_count=short_answer_count,
+                single_choice_score=single_choice_score,
+                multiple_choice_score=multiple_choice_score,
+                true_false_score=true_false_score,
+                fill_blank_score=fill_blank_score,
+                short_answer_score=short_answer_score,
+                total_score=total_score,
+                single_choice_bank_id=int(single_choice_bank_id) if single_choice_bank_id else None,
+                multiple_choice_bank_id=int(multiple_choice_bank_id) if multiple_choice_bank_id else None,
+                true_false_bank_id=int(true_false_bank_id) if true_false_bank_id else None,
+                fill_blank_bank_id=int(fill_blank_bank_id) if fill_blank_bank_id else None,
+                short_answer_bank_id=int(short_answer_bank_id) if short_answer_bank_id else None,
+                allow_student_choice=allow_student_choice,
+                short_answer_grading_method=short_answer_grading_method,
+                fill_blank_grading_method=fill_blank_grading_method,
+                is_active=True
+            )
+            db.session.add(test)
         db.session.commit()
         
         response_data = {
@@ -2579,7 +2673,7 @@ def get_ai_grading_status():
 @app.route('/logout')
 def logout():
     session.clear()
-    return redirect(url_for('student_start'))
+    return redirect(url_for('index'))
 
 if __name__ == '__main__':
     init_db()
