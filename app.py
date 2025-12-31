@@ -610,10 +610,33 @@ def submit_test():
     
     # 计算得分
     total_score = 0
+    
+    # 获取批改方式配置，用于判断哪些题目需要AI批改
+    short_answer_grading_method = 'manual'  # 默认人工批改
+    fill_blank_grading_method = 'manual'  # 默认人工批改
+    if selected_preset_id:
+        preset = TestPreset.query.get(selected_preset_id)
+        if preset:
+            short_answer_grading_method = preset.short_answer_grading_method or 'manual'
+            fill_blank_grading_method = preset.fill_blank_grading_method or 'manual'
+    else:
+        current_test = Test.query.filter_by(is_active=True).first()
+        if current_test:
+            short_answer_grading_method = current_test.short_answer_grading_method or 'manual'
+            fill_blank_grading_method = current_test.fill_blank_grading_method or 'manual'
+    
     for question_id, answer in answers.items():
         question = Question.query.get(question_id)
         if not question:
             continue
+        
+        # 判断是否需要AI批改
+        need_ai_grading = False
+        if question.question_type == 'short_answer' and short_answer_grading_method == 'ai':
+            need_ai_grading = True
+        elif question.question_type == 'fill_blank' and fill_blank_grading_method == 'ai':
+            need_ai_grading = True
+        
         if question.question_type == 'single_choice':
             if answer == question.correct_answer:
                 # 处理test_config可能是字典或对象的情况
@@ -631,44 +654,35 @@ def submit_test():
                 score = test_config.get('true_false_score') if isinstance(test_config, dict) else test_config.true_false_score
                 total_score += score or 0
         elif question.question_type == 'fill_blank':
-            # 检查是否已经通过AI批改计算了分数
-            if question_id in ai_scores:
-                # AI批改的填空题，分数已经在AI批改时计算，跳过传统计算
-                continue
-            
-            # 处理填空题多个答案（仅用于非AI批改的情况）
-            # 统一处理分隔符：支持顿号（、）和逗号（,）
-            def split_fill_answers(text):
-                """分割答案，支持顿号和逗号"""
-                # 先统一替换为顿号
-                text = text.replace(',', '、')
-                return [f.strip().lower() for f in text.split('、') if f.strip()]
-            
-            correct_fill_ins = split_fill_answers(question.correct_answer)
-            student_fill_ins = split_fill_answers(answer)
-            num_fill_ins = len(correct_fill_ins)
-            
-            if num_fill_ins > 0:
-                score = test_config.get('fill_blank_score') if isinstance(test_config, dict) else test_config.fill_blank_score
-                score_per_fill_in = round((score or 0) / num_fill_ins, 1)
-                fill_blank_score = 0
+            # 只计算不需要AI批改的填空题分数
+            if not need_ai_grading:
+                # 处理填空题多个答案（仅用于非AI批改的情况）
+                # 统一处理分隔符：支持顿号（、）和逗号（,）
+                def split_fill_answers(text):
+                    """分割答案，支持顿号和逗号"""
+                    # 先统一替换为顿号
+                    text = text.replace(',', '、')
+                    return [f.strip().lower() for f in text.split('、') if f.strip()]
                 
-                # 比较每个填空
-                for i in range(min(len(student_fill_ins), num_fill_ins)):
-                    if student_fill_ins[i] == correct_fill_ins[i]:
-                        fill_blank_score += score_per_fill_in
+                correct_fill_ins = split_fill_answers(question.correct_answer)
+                student_fill_ins = split_fill_answers(answer)
+                num_fill_ins = len(correct_fill_ins)
                 
-                # 对填空题分数进行四舍五入
-                fill_blank_score = round(fill_blank_score)
-                total_score += fill_blank_score
+                if num_fill_ins > 0:
+                    score = test_config.get('fill_blank_score') if isinstance(test_config, dict) else test_config.fill_blank_score
+                    score_per_fill_in = round((score or 0) / num_fill_ins, 1)
+                    fill_blank_score = 0
+                    
+                    # 比较每个填空
+                    for i in range(min(len(student_fill_ins), num_fill_ins)):
+                        if student_fill_ins[i] == correct_fill_ins[i]:
+                            fill_blank_score += score_per_fill_in
+                    
+                    # 对填空题分数进行四舍五入
+                    fill_blank_score = round(fill_blank_score)
+                    total_score += fill_blank_score
         elif question.question_type == 'short_answer':
-            # 检查是否已经通过AI批改计算了分数
-            if question_id in ai_scores:
-                # AI批改的简答题，分数已经在AI批改时计算，跳过传统计算
-                continue
-                
-            # 简答题答案可能包含HTML标签（图片等），直接使用answers字典中已有的原始内容
-            # 不再重新从表单获取，避免覆盖原始答案
+            # 简答题字数限制处理，无论是否AI批改都需要做
             student_answer = answers.get(question_id, '')
             
             # 限制字数：移除HTML标签后不超过600字
@@ -1419,7 +1433,7 @@ def grade_short_answer_by_result():
             history.lowest_score = lowest_score
             db.session.commit()
         
-        flash('评分成功', 'success')
+
     except Exception as e:
         db.session.rollback()
         flash(f'评分失败：{str(e)}')
@@ -1531,7 +1545,7 @@ def grade_fill_blank(question_id, result_id):
         history.lowest_score = lowest_score
         db.session.commit()
         
-        flash('评分成功', 'success')
+
     
     except Exception as e:
         db.session.rollback()

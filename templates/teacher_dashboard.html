@@ -633,12 +633,21 @@
         function loadPresets(){
             fetch('/api/test_presets').then(r=>r.json()).then(data=>{
                 const sel=document.getElementById('presetSelect');
-                sel.innerHTML='<option value="">-- 选择预设 --</option>';
-                if(data.success && data.presets){
-                    data.presets.forEach(p=>{
-                        sel.innerHTML+=`<option value="${p.id}">${p.title}</option>`;
+                sel.innerHTML='';
+                
+                if(data.success && data.presets && data.presets.length > 0){
+                    // 如果有预设，第一个选项为"-- 选择预设 --"，默认选中最后一次保存的预设（第一个返回的预设）
+                    sel.innerHTML='<option value="">-- 选择预设 --</option>';
+                    data.presets.forEach((p, index)=>{
+                        sel.innerHTML+=`<option value="${p.id}" ${index === 0 ? 'selected' : ''}>${p.title}</option>`;
                     });
+                } else {
+                    // 如果没有预设，显示"没有预设参数"且禁用下拉菜单
+                    sel.innerHTML='<option value="" disabled selected>没有预设参数</option>';
                 }
+                
+                // 如果没有选中任何预设，禁用删除按钮
+                document.getElementById('deletePresetBtn').disabled = !sel.value;
             });
         }
 
