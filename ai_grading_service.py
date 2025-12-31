@@ -130,6 +130,14 @@ class AIGradingService:
             return False, {"error_message": "AI批改功能未启用"}
         
         try:
+            # 检查学生答案是否为空
+            if not student_answer or student_answer.strip() == '':
+                # 学生未作答，直接给0分
+                return True, {
+                    'score': 0,
+                    'feedback': '主要得分点: 学生未作答，无法评分。\n扣分点: 无作答内容。\n改进建议: 请根据题目要求提供答案。\n拓展知识: 无'
+                }
+            
             # 根据题目类型选择不同的批改策略
             if question_type == 'fill_blank':
                 return self._grade_fill_blank(question, reference_answer, student_answer, max_score)
