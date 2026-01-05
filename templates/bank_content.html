@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>题库内容 - {{ bank.name }}</title>
+    <link href="{{ url_for('static', filename='bootstrap/css/bootstrap.min.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='bootstrap-icons/font/bootstrap-icons.css') }}" rel="stylesheet">
+</head>
+<body class="container mt-4">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
+        <div class="container">
+            <a class="navbar-brand" href="{{ url_for('teacher_dashboard') }}">
+                <i class="bi bi-arrow-left"></i> 返回教师面板
+            </a>
+            <span class="navbar-text text-white">
+                {{ bank.name }} - {{ bank.question_type_display }}
+            </span>
+        </div>
+    </nav>
+
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h4 class="mb-0">题库内容</h4>
+            <div class="d-flex align-items-center">
+                <button class="btn btn-primary me-2" onclick="addQuestion()">
+                    <i class="bi bi-plus-lg"></i> 添加题目
+                </button>
+                <a class="btn btn-success" href="/export_bank/{{ bank.id }}" target="_blank">
+                    <i class="bi bi-download"></i> 导出题库
+                </a>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th style="width: 60px">#</th>
+                            {% if bank.question_type == 'short_answer' %}
+                            <th style="width: 50%">题目内容</th>
+                            <th style="width: 25%">参考答案</th>
+                            {% else %}
+                            <th>题目内容</th>
+                            {% if bank.question_type in ['single_choice', 'multiple_choice'] %}
+                            <th>选项</th>
+                            {% endif %}
+                            <th style="width: 120px">正确答案</th>
+                            {% endif %}
+                            <th style="width: 80px">分值</th>
+                            <th style="width: 120px">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for question in questions %}
+                        <tr>
+                            <td>{{ loop.index }}</td>
+                            <td>{{ question.content|replace('\n', '<br>')|safe }}</td>
+                            {% if bank.question_type in ['single_choice', 'multiple_choice'] %}
+                            <td>
+                                <div class="small">
+                                    <div class="mb-1">A. {{ question.option_a }}</div>
+                                    <div class="mb-1">B. {{ question.option_b }}</div>
+                                    <div class="mb-1">C. {{ question.option_c }}</div>
+                                    <div class="mb-1">D. {{ question.option_d }}</div>
+                                </div>
+                            </td>
+                            {% endif %}
+                            <td {% if bank.question_type != 'short_answer' %}class="text-center"{% endif %}>{{ question.correct_answer }}</td>
+                            <td class="text-center">{{ question.score }}</td>
+                            <td>
+                                <div class="btn-group btn-group-sm">
+                                    <button class="btn btn-outline-primary" onclick="editQuestion({{ question.id }})">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    <button class="btn btn-outline-danger" onclick="deleteQuestion({{ question.id }})">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- 编辑题目的模态框 -->
+    <div class="modal fade" id="questionModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalTitle">编辑题目</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="questionForm">
+                        <input type="hidden" id="question_id" name="question_id">
+                        <div class="mb-3">
+                            <label for="content" class="form-label">题目内容</label>
+                            <textarea class="form-control allow-img-paste" id="content" name="content" rows="3" required placeholder="可粘贴图片"></textarea>
+                        </div>
+                        {% if bank.question_type in ['single_choice', 'multiple_choice'] %}
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="option_a" class="form-label">选项A</label>
+                                <input type="text" class="form-control" id="option_a" name="option_a" required>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="option_b" class="form-label">选项B</label>
+                                <input type="text" class="form-control" id="option_b" name="option_b" required>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="option_c" class="form-label">选项C</label>
+                                <input type="text" class="form-control" id="option_c" name="option_c" required>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="option_d" class="form-label">选项D</label>
+                                <input type="text" class="form-control" id="option_d" name="option_d" required>
+                            </div>
+                        </div>
+                        {% endif %}
+                        <div class="mb-3">
+                            {% if bank.question_type == 'short_answer' %}
+                            <label for="correct_answer" class="form-label">参考答案</label>
+                            {% else %}
+                            <label for="correct_answer" class="form-label">正确答案</label>
+                            {% endif %}
+                            {% if bank.question_type == 'single_choice' %}
+                            <select class="form-control" id="correct_answer" name="correct_answer" required>
+                                <option value="A">A</option>
+                                <option value="B">B</option>
+                                <option value="C">C</option>
+                                <option value="D">D</option>
+                            </select>
+                            {% elif bank.question_type == 'multiple_choice' %}
+                            <div id="multipleChoiceAnswers">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="correct_answer" value="A" id="mcA">
+                                    <label class="form-check-label" for="mcA">A</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="correct_answer" value="B" id="mcB">
+                                    <label class="form-check-label" for="mcB">B</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="correct_answer" value="C" id="mcC">
+                                    <label class="form-check-label" for="mcC">C</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="correct_answer" value="D" id="mcD">
+                                    <label class="form-check-label" for="mcD">D</label>
+                                </div>
+                            </div>
+                            {% elif bank.question_type == 'true_false' %}
+                            <select class="form-control" id="correct_answer" name="correct_answer" required>
+                                <option value="正确">正确</option>
+                                <option value="错误">错误</option>
+                            </select>
+                            {% else %}
+                            <textarea class="form-control allow-img-paste" id="correct_answer" name="correct_answer" required placeholder="可粘贴图片"></textarea>
+                            {% endif %}
+                        </div>
+                        <div class="mb-3">
+                            <label for="score" class="form-label">分值</label>
+                            <input type="number" class="form-control" id="score" name="score" required min="1" value="1">
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="saveQuestion()">保存</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='bootstrap/js/bootstrap.bundle.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/paste_image.js') }}"></script>
+    <script>
+        let questionModal;
+        document.addEventListener('DOMContentLoaded', function() {
+            questionModal = new bootstrap.Modal(document.getElementById('questionModal'));
+            document.querySelectorAll('textarea.allow-img-paste').forEach(el=>window.attachImagePaste&&attachImagePaste(el));
+        });
+
+        function addQuestion() {
+            document.getElementById('modalTitle').textContent = '添加题目';
+            document.getElementById('questionForm').reset();
+            document.getElementById('question_id').value = '';
+            questionModal.show();
+            // 确保图片粘贴功能已初始化
+            setTimeout(() => {
+                document.querySelectorAll('#questionModal textarea.allow-img-paste').forEach(el => {
+                    if (window.attachImagePaste) attachImagePaste(el);
+                });
+            }, 100);
+        }
+
+        function editQuestion(questionId) {
+            document.getElementById('modalTitle').textContent = '编辑题目';
+            fetch(`/api/question/${questionId}`).then(r=>r.json()).then(data => {
+                document.getElementById('question_id').value = data.id;
+                document.getElementById('content').value = data.content;
+                document.getElementById('score').value = data.score;
+                
+                if (data.question_type === 'single_choice' || data.question_type === 'multiple_choice') {
+                    document.getElementById('option_a').value = data.option_a;
+                    document.getElementById('option_b').value = data.option_b;
+                    document.getElementById('option_c').value = data.option_c;
+                    document.getElementById('option_d').value = data.option_d;
+                }
+
+                if (data.question_type === 'multiple_choice') {
+                    const answers = data.correct_answer.split(',');
+                    document.querySelectorAll('#multipleChoiceAnswers input[type="checkbox"]').forEach(cb => {
+                        cb.checked = answers.includes(cb.value);
+                    });
+                } else {
+                    document.getElementById('correct_answer').value = data.correct_answer;
+                }
+                
+                questionModal.show();
+                // 确保图片粘贴功能已初始化
+                setTimeout(() => {
+                    document.querySelectorAll('#questionModal textarea.allow-img-paste').forEach(el => {
+                        if (window.attachImagePaste) attachImagePaste(el);
+                    });
+                }, 100);
+            });
+        }
+
+        function saveQuestion() {
+            const form = document.getElementById('questionForm');
+            const formData = new FormData(form);
+            const questionId = formData.get('question_id');
+            
+            // 处理多选题答案
+            if (document.getElementById('multipleChoiceAnswers')) {
+                const checkedAnswers = Array.from(document.querySelectorAll('#multipleChoiceAnswers input:checked'))
+                    .map(cb => cb.value);
+                if (checkedAnswers.length === 0) {
+                    alert('请至少选择一个正确答案');
+                    return;
+                }
+                formData.set('correct_answer', checkedAnswers.join(','));
+            }
+
+            // 添加题库ID和题型
+            if (!questionId) {
+                formData.append('bank_id', '{{ bank.id }}');
+                formData.append('question_type', '{{ bank.question_type }}');
+            }
+
+            fetch(`/api/question/${questionId || 'new'}`, {
+                method: 'POST',
+                body: formData
+            }).then(r => {
+                if (r.ok) {
+                    location.reload();
+                } else {
+                    alert('保存失败');
+                }
+            });
+        }
+
+        function deleteQuestion(questionId) {
+            if (!confirm('确定要删除这道题目吗？')) return;
+            fetch(`/api/question/${questionId}`, {
+                method: 'DELETE'
+            }).then(r => {
+                if (r.ok) {
+                    location.reload();
+                } else {
+                    alert('删除失败');
+                }
+            });
+        }
+    </script>
+</body>
+</html> 

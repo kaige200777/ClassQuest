@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>测试统计</title>
+    <link href="{{ url_for('static', filename='bootstrap/css/bootstrap.min.css') }}" rel="stylesheet">
+</head>
+<body class="container mt-4">
+    <nav class="navbar navbar-dark bg-dark mb-4">
+        <div class="container-fluid">
+            <a href="{{ url_for('teacher_dashboard') }}" class="navbar-brand"><i class="bi bi-arrow-left"></i> 返回教师面板</a>
+            <span class="navbar-text text-white">测试统计</span>
+        </div>
+    </nav>
+
+    {% if tests %}
+    <table class="table table-bordered">
+        <thead class="table-light">
+            <tr>
+                <th style="width:60px">#</th>
+                <th>测试标题</th>
+                <th style="width:160px">创建时间</th>
+                <th style="width:100px">人次</th>
+                <th style="width:160px">操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for test in tests %}
+            <tr>
+                <td>{{ loop.index }}</td>
+                <td>{{ test.test.title }}</td>
+                <td>{{ test.test.created_at|bjtime }}</td>
+                <td>{{ test.count }}</td>
+                <td class="d-flex">
+                    <a href="{{ url_for('get_test_statistics', test_id=test.test.id) }}" class="btn btn-sm btn-primary me-2">查看统计</a>
+                    <form method="post" action="{{ url_for('delete_test', test_id=test.test.id) }}" onsubmit="return confirm('确定删除此测试及其成绩吗？');">
+                        <button type="submit" class="btn btn-sm btn-danger">删除</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="alert alert-info">暂无测试数据</div>
+    {% endif %}
+
+    <script src="{{ url_for('static', filename='bootstrap/js/bootstrap.bundle.min.js') }}"></script>
+</body>
+</html> 

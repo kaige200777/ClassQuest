@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>教师控制面板</title>
+    <link href="{{ url_for('static', filename='bootstrap/css/bootstrap.min.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='bootstrap-icons/font/bootstrap-icons.css') }}" rel="stylesheet">
+    <style>
+        .navbar-dark .navbar-nav .nav-link {
+            color: #fff !important;
+            background: #343a40 !important;
+            margin-right: 10px;
+            border-radius: 4px;
+            padding: 6px 16px;
+            transition: background 0.2s;
+            font-weight: 500;
+        }
+        .navbar-dark .navbar-nav .nav-link:hover, .navbar-dark .navbar-nav .nav-link.active {
+            background: #0d6efd !important;
+            color: #fff !important;
+        }
+        .navbar-dark .navbar-nav .nav-link i {
+            margin-right: 4px;
+        }
+        #bankTypeTabs {
+            flex-wrap: nowrap;
+            overflow-x: auto;
+        }
+        #bankTypeTabs .nav-link {
+            padding: 4px 10px;
+            font-size: 0.9rem;
+            white-space: nowrap;
+        }
+    </style>
+</head>
+<body class="container mt-4">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="#">
+                <i class="bi bi-mortarboard"></i> 教师控制面板
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('index') }}">
+                            <i class="bi bi-house-door"></i> 返回首页
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('test_statistics') }}">
+                            <i class="bi bi-bar-chart-fill"></i> 测试统计
+                        </a>
+                    </li>
+                </ul>
+                <ul class="navbar-nav">
+                    <li class="nav-item me-2">
+                        <button class="btn btn-outline-danger" onclick="confirmInitialize()">
+                            <i class="bi bi-trash3"></i> 初始化数据
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="btn btn-outline-light" data-bs-toggle="modal" data-bs-target="#changePasswordModal">
+                            <i class="bi bi-key-fill"></i> 修改密码
+                        </button>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="row mt-4">
+        <!-- 左侧测试参数设置 -->
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h4>设置测试参数</h4>
+                </div>
+                <div class="card-body">
+                    <form id="testSettingsForm" action="{{ url_for('save_test_settings') }}" method="post">
+                        <div class="mb-3">
+                            <div class="row align-items-center">
+                                <div class="col-md-2">
+                                    <label for="test_title" class="form-label mb-0">测试标题</label>
+                                </div>
+                                <div class="col-md-10">
+                                    <input type="text" class="form-control" id="test_title" name="test_title" value="{{ last_test.title if last_test else '2025信息技术合格考练习题' }}" required>
+                                </div>
+                            </div>
+                            <input type="hidden" name="preset_id" id="preset_id" value="">
+                        </div>
+                        
+                        <!-- 单选题设置 -->
+                        <div class="mb-3">
+                            <div class="row align-items-center">
+                                <div class="col-md-2">
+                                    <label class="form-label mb-0">单选题</label>
+                                </div>
+                                <div class="col-md-2">
+                                    <input type="number" class="form-control form-control-sm" name="single_choice_count" value="{{ last_test.single_choice_count if last_test else 20 }}" min="0" placeholder="数量" style="width: 80px;">
+                                </div>
+                                <div class="col-md-2">
+                                    <input type="number" class="form-control form-control-sm" name="single_choice_score" value="{{ last_test.single_choice_score if last_test else 4 }}" min="0" placeholder="分值" style="width: 80px;">
+                                </div>
+                                <div class="col-md-6">
+                                    <select class="form-select" name="single_choice_bank" data-selected="{{ last_test.single_choice_bank_id if last_test else '' }}">
+                                        <option value="">选择题库</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- 多选题设置 -->
+                        <div class="mb-3">
+                            <div class="row align-items-center">
+                                <div class="col-md-2">
+                                    <label class="form-label mb-0">多选题</label>
+                                </div>
+                                <div class="col-md-2">
+                                    <input type="number" class="form-control form-control-sm" name="multiple_choice_count" value="{{ last_test.multiple_choice_count if last_test else 1 }}" min="0" placeholder="数量" style="width: 80px;">
+                                </div>
+                                <div class="col-md-2">
+                                    <input type="number" class="form-control form-control-sm" name="multiple_choice_score" value="{{ last_test.multiple_choice_score if last_test else 5 }}" min="0" placeholder="分值" style="width: 80px;">
+                                </div>
+                                <div class="col-md-6">
+                                    <select class="form-select" name="multiple_choice_bank" data-selected="{{ last_test.multiple_choice_bank_id if last_test else '' }}">
+                                        <option value="">选择题库</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- 判断题设置 -->
+                        <div class="mb-3">
+                            <div class="row align-items-center">
+                                <div class="col-md-2">
+                                    <label class="form-label mb-0">判断题</label>
+                                </div>
+                                <div class="col-md-2">
+                                    <input type="number" class="form-control form-control-sm" name="true_false_count" value="{{ last_test.true_false_count if last_test else 2 }}" min="0" placeholder="数量" style="width: 80px;">
+                                </div>
+                                <div class="col-md-2">
+                                    <input type="number" class="form-control form-control-sm" name="true_false_score" value="{{ last_test.true_false_score if last_test else 3 }}" min="0" placeholder="分值" style="width: 80px;">
+                                </div>
+                                <div class="col-md-6">
+                                    <select class="form-select" name="true_false_bank" data-selected="{{ last_test.true_false_bank_id if last_test else '' }}">
+                                        <option value="">选择题库</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- 填空题设置 -->
+                        <div class="mb-3">
+                            <div class="row align-items-center">
+                                <div class="col-md-2">
+                                    <label class="form-label mb-0">填空题</label>
+                                </div>
+                                <div class="col-md-2">
+                                    <input type="number" class="form-control form-control-sm" name="fill_blank_count" value="{{ last_test.fill_blank_count if last_test else 1 }}" min="0" placeholder="数量" style="width: 80px;">
+                                </div>
+                                <div class="col-md-2">
+                                    <input type="number" class="form-control form-control-sm" name="fill_blank_score" value="{{ last_test.fill_blank_score if last_test else 9 }}" min="0" placeholder="分值" style="width: 80px;">
+                                </div>
+                                <div class="col-md-6">
+                                    <select class="form-select" name="fill_blank_bank" data-selected="{{ last_test.fill_blank_bank_id if last_test else '' }}">
+                                        <option value="">选择题库</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- 简答题设置 -->
+                        <div class="mb-3">
+                            <div class="row align-items-center">
+                                <div class="col-md-2">
+                                    <label class="form-label mb-0">简答题</label>
+                                </div>
+                                <div class="col-md-2">
+                                    <input type="number" class="form-control form-control-sm" name="short_answer_count" value="{{ last_test.short_answer_count if last_test else 0 }}" min="0" placeholder="数量" style="width: 80px;">
+                                </div>
+                                <div class="col-md-2">
+                                    <input type="number" class="form-control form-control-sm" name="short_answer_score" value="{{ last_test.short_answer_score if last_test else 0 }}" min="0" placeholder="分值" style="width: 80px;">
+                                </div>
+                                <div class="col-md-6">
+                                    <select class="form-select" name="short_answer_bank" data-selected="{{ last_test.short_answer_bank_id if last_test else '' }}">
+                                        <option value="">选择题库</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 总分 -->
+                        <div class="mb-3">
+                            <div class="row align-items-center">
+                                <div class="col-md-2">
+                                    <label for="total_score" class="form-label mb-0">总分</label>
+                                </div>
+                                <div class="col-md-2">
+                                    <input type="number" class="form-control" id="total_score" name="total_score" value="{{ last_test.total_score if last_test else 100 }}" readonly style="width: 80px;">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 填空题批改设置 -->
+                        <div class="mb-3" id="fillBlankGradingSection">
+                            <div class="row align-items-center">
+                                <div class="col-md-2">
+                                    <label class="form-label mb-0">填空题批改</label>
+                                </div>
+                                <div class="col-md-10">
+                                    <div class="d-flex align-items-center">
+                                        <div class="form-check me-3">
+                                            <input class="form-check-input" type="radio" name="fill_blank_grading_method" id="fill_blank_manual_grading" value="manual" checked>
+                                            <label class="form-check-label" for="fill_blank_manual_grading">
+                                                人工批改
+                                            </label>
+                                        </div>
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="radio" name="fill_blank_grading_method" id="fill_blank_ai_grading" value="ai" disabled>
+                                            <label class="form-check-label" for="fill_blank_ai_grading" id="fill_blank_ai_grading_label">
+                                                AI批改
+                                            </label>
+                                        </div>
+                                        <small class="text-muted ms-2" id="fillBlankAiGradingStatus" style="display:none;">
+                                            <i class="bi bi-exclamation-triangle"></i> AI批改功能未配置
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 简答题批改设置 -->
+                        <div class="mb-3" id="shortAnswerGradingSection">
+                            <div class="row align-items-center">
+                                <div class="col-md-2">
+                                    <label class="form-label mb-0">简答题批改</label>
+                                </div>
+                                <div class="col-md-5">
+                                    <div class="d-flex align-items-center">
+                                        <div class="form-check me-3">
+                                            <input class="form-check-input" type="radio" name="short_answer_grading_method" id="short_answer_manual_grading" value="manual">
+                                            <label class="form-check-label" for="short_answer_manual_grading">
+                                                人工批改
+                                            </label>
+                                        </div>
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="radio" name="short_answer_grading_method" id="short_answer_ai_grading" value="ai" disabled>
+                                            <label class="form-check-label" for="short_answer_ai_grading" id="short_answer_ai_grading_label">
+                                                AI批改
+                                            </label>
+                                        </div>
+                                        <small class="text-muted ms-2" id="shortAnswerAiGradingStatus" style="display:none;">
+                                            <i class="bi bi-exclamation-triangle"></i> AI批改功能未配置
+                                        </small>
+                                    </div>
+                                </div>
+                                <div class="col-md-5">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="allow_student_choice" name="allow_student_choice" value="true" {% if last_test and last_test.allow_student_choice %}checked{% endif %}>
+                                        <label class="form-check-label" for="allow_student_choice">
+                                            允许学生自选测试内容
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row align-items-center">
+                            <div class="col-md-12 mb-3">
+                                <button type="submit" class="btn btn-primary w-100">保存设置</button>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <div class="row align-items-center">
+                                <div class="col-md-2">
+                                    <label class="form-label mb-0">选择预设</label>
+                                </div>
+                                <div class="col-md-10">
+                                    <div class="input-group">
+                                        <select id="presetSelect" class="form-select">
+                                            <option value="">-- 选择预设 --</option>
+                                        </select>
+                                        <button type="button" id="deletePresetBtn" class="btn btn-outline-danger" disabled>删除</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- 右侧题库管理 -->
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h4>题库管理</h4>
+                </div>
+                <div class="card-body">
+                    <ul class="nav nav-tabs" id="bankTypeTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="tab-single" data-bs-toggle="tab" data-type="single_choice" type="button" role="tab">单选题</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="tab-multi" data-bs-toggle="tab" data-type="multiple_choice" type="button" role="tab">多选题</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="tab-judge" data-bs-toggle="tab" data-type="true_false" type="button" role="tab">判断题</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="tab-fill" data-bs-toggle="tab" data-type="fill_blank" type="button" role="tab">填空题</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="tab-short" data-bs-toggle="tab" data-type="short_answer" type="button" role="tab">简答题</button>
+                        </li>
+                    </ul>
+                    <div class="mt-3" id="bankListContainer">
+                        <!-- 题库列表JS渲染 -->
+                        </div>
+                    <div class="mt-3">
+                        <form id="importForm" action="{{ url_for('import_questions', question_type='single_choice') }}" method="post" enctype="multipart/form-data">
+                            <input type="hidden" name="question_type" id="importTypeInput" value="single_choice">
+                            <input type="hidden" name="bank_name" value="">
+                            <input type="file" id="csvFileInput" name="file" accept=".csv,.xlsx" style="display:none" required>
+                            <button type="button" id="importBtn" class="btn btn-primary w-100">导入题库</button>
+                        </form>
+                        </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 修改密码的模态框 -->
+    <div class="modal fade" id="changePasswordModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">修改密码</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="changePasswordForm" action="{{ url_for('change_password') }}" method="post">
+                        <div class="mb-3">
+                            <label for="current_password" class="form-label">当前密码</label>
+                            <input type="password" class="form-control" id="current_password" name="current_password" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="new_password" class="form-label">新密码</label>
+                            <input type="password" class="form-control" id="new_password" name="new_password" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="confirm_password" class="form-label">确认新密码</label>
+                            <input type="password" class="form-control" id="confirm_password" name="confirm_password" required>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="submitPasswordChange()">保存</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='bootstrap/js/bootstrap.bundle.min.js') }}"></script>
+    <script>
+        // 题型与tab映射
+        const typeMap = {
+            'single_choice': '单选题',
+            'multiple_choice': '多选题',
+            'true_false': '判断题',
+            'fill_blank': '填空题',
+            'short_answer': '简答题'
+        };
+        let currentType = 'single_choice';
+        let bankData = {};
+
+        // 检查 URL 参数，如果有 question_type 参数，自动切换到对应选项卡
+        function initCurrentType() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const questionType = urlParams.get('question_type');
+            if (questionType && ['single_choice', 'multiple_choice', 'true_false', 'fill_blank', 'short_answer'].includes(questionType)) {
+                currentType = questionType;
+                // 更新导入类型输入框
+                document.getElementById('importTypeInput').value = questionType;
+                // 切换选项卡 - 直接触发对应按钮的点击事件
+                const targetButton = document.querySelector(`#bankTypeTabs button[data-type="${questionType}"]`);
+                if (targetButton) {
+                    // 移除所有活动状态
+                    document.querySelectorAll('#bankTypeTabs button').forEach(btn => {
+                        btn.classList.remove('active');
+                    });
+                    // 激活目标选项卡
+                    targetButton.classList.add('active');
+                    // 直接设置并渲染，避免重复点击
+                    renderBankList();
+                }
+            }
+        }
+
+        function loadBankList() {
+            fetch('/api/question_banks').then(r=>r.json()).then(response => {
+                // 将返回的题库列表按题型分组
+                const grouped = {};
+                if (response.success && response.banks) {
+                    response.banks.forEach(bank => {
+                        if (!grouped[bank.question_type]) {
+                            grouped[bank.question_type] = [];
+                        }
+                        grouped[bank.question_type].push(bank);
+                    });
+                }
+                bankData = grouped;
+                renderBankList();
+                updateBankSelects();
+            });
+        }
+
+        function renderBankList() {
+            const list = bankData[currentType] || [];
+            let html = '<ul class="list-group">';
+            list.forEach(bank => {
+                html += `<li class="list-group-item d-flex justify-content-between align-items-center">
+                    <a href="/teacher/bank/${bank.id}" target="_blank" style="text-decoration:none;">${bank.name}</a>
+                    <span>
+                        <button class="btn btn-sm btn-outline-secondary me-1" onclick="renameBank(${bank.id}, '${bank.name}')">重命名</button>
+                        <button class="btn btn-sm btn-outline-danger" onclick="deleteBank(${bank.id})">删除</button>
+                    </span>
+                </li>`;
+            });
+            html += '</ul>';
+            if(list.length === 0) html += '<div class="text-muted text-center mt-2">暂无题库</div>';
+            document.getElementById('bankListContainer').innerHTML = html;
+        }
+
+        function updateBankSelects() {
+            // 更新所有题库选择下拉列表
+            Object.keys(typeMap).forEach(type => {
+                const banks = bankData[type] || [];
+                const select = document.querySelector(`select[name="${type}_bank"]`);
+                if (select) {
+                    let html = '<option value="">选择题库</option>';
+                    banks.forEach(bank => {
+                        html += `<option value="${bank.id}" data-count="${bank.question_count}">${bank.name}</option>`;
+                    });
+                    select.innerHTML = html;
+                    // 恢复选中
+                    const selVal = select.dataset.selected;
+                    if(selVal){select.value = selVal;}
+                }
+            });
+        }
+        // 绑定下拉变化限制题量
+        document.querySelectorAll('select[name$="_bank"]').forEach(sel=>{
+            sel.onchange=function(){
+                const type=this.name.replace('_bank','');
+                const selected=this.options[this.selectedIndex];
+                const max=selected.dataset.count?parseInt(selected.dataset.count):0;
+                const cntInput=document.querySelector(`input[name="${type}_count"]`);
+                if(cntInput){
+                    if(max){cntInput.max=max;} else {cntInput.removeAttribute('max');}
+                    if(max && parseInt(cntInput.value)>max){cntInput.value=max;}
+                }
+            };
+        });
+
+        // 切换题型标签页
+        document.querySelectorAll('#bankTypeTabs button').forEach(button => {
+            button.onclick = function() {
+                currentType = this.getAttribute('data-type');
+                document.getElementById('importTypeInput').value = currentType;
+                // 更新表单的 action URL
+                const importForm = document.getElementById('importForm');
+                importForm.action = `/import_questions/${currentType}`;
+                renderBankList();
+            };
+        });
+
+        // 导入后刷新题库列表
+        const importForm = document.getElementById('importForm');
+        importForm.onsubmit = function() {
+            setTimeout(loadBankList, 1000);
+        };
+
+        // 重命名题库
+        function renameBank(bankId, oldName) {
+            const newName = prompt('请输入新的题库名称：', oldName);
+            if (newName && newName !== oldName) {
+                fetch(`/api/bank/${bankId}/rename`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({name: newName})
+                })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        // alert('✅ ' + data.message);  // 移除成功提示
+                        loadBankList();
+                    } else {
+                        alert('❌ ' + data.message);
+                    }
+                })
+                .catch(error => {
+                    alert('❌ 重命名失败: ' + error.message);
+                });
+            }
+        }
+
+        // 删除题库
+        function deleteBank(bankId) {
+            if (confirm('确定要删除这个题库吗？此操作将删除题库中的所有题目，且无法恢复！')) {
+                fetch(`/api/bank/${bankId}`, {
+                    method: 'DELETE'
+                })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        alert('✅ ' + data.message);
+                        loadBankList();
+                    } else {
+                        alert('❌ ' + data.message);
+                    }
+                })
+                .catch(error => {
+                    alert('❌ 删除失败: ' + error.message);
+                });
+            }
+        }
+
+        // 计算总分
+        function calculateTotalScore() {
+            const types = ['single_choice', 'multiple_choice', 'true_false', 'fill_blank', 'short_answer'];
+            let total = 0;
+            
+            types.forEach(type => {
+                const count = parseInt(document.querySelector(`input[name="${type}_count"]`).value) || 0;
+                const score = parseInt(document.querySelector(`input[name="${type}_score"]`).value) || 0;
+                total += count * score;
+            });
+
+            document.getElementById('total_score').value = total;
+        }
+
+        // 监听所有题目数量和分值的输入变化
+        document.querySelectorAll('input[name$="_count"], input[name$="_score"]').forEach(input => {
+            input.addEventListener('input', calculateTotalScore);
+        });
+
+        // 初始化数据确认
+        function confirmInitialize() {
+            if (confirm('确定要初始化所有数据吗？这将清空所有题库和测试记录！')) {
+                fetch('/initialize_data', {method: 'POST'})
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            alert('数据初始化成功');
+                            location.reload();
+                        } else {
+                            alert('初始化失败：' + data.message);
+                        }
+                    });
+            }
+        }
+
+        // 修改密码
+        function submitPasswordChange() {
+            const form = document.getElementById('changePasswordForm');
+            const newPassword = document.getElementById('new_password').value;
+            const confirmPassword = document.getElementById('confirm_password').value;
+            
+            if (newPassword !== confirmPassword) {
+                alert('两次输入的新密码不一致');
+                return;
+            }
+            
+            form.submit();
+        }
+
+        // 导入按钮逻辑
+        document.getElementById('importBtn').addEventListener('click', function() {
+            document.getElementById('csvFileInput').click();
+        });
+
+        document.getElementById('csvFileInput').addEventListener('change', function() {
+            if(this.files.length > 0) {
+                // 自动设置 bank_name 为文件名（去掉扩展名）
+                const fileName = this.files[0].name.replace(/\.[^.]+$/, '');
+                document.querySelector('input[name="bank_name"]').value = fileName;
+                
+                // 使用 AJAX 提交，而不是传统表单提交
+                const formData = new FormData(importForm);
+                const importBtn = document.getElementById('importBtn');
+                
+                // 禁用按钮，显示加载状态
+                importBtn.disabled = true;
+                importBtn.textContent = '导入中...';
+                
+                fetch(importForm.action, {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // 显示成功消息
+                        alert(`✅ ${data.message}\n\n导入数量: ${data.imported_count}\n错误数量: ${data.error_count}`);
+                        // 刷新题库列表
+                        loadBankList();
+                    } else {
+                        // 显示错误消息
+                        alert(`❌ 导入失败\n\n${data.message}`);
+                    }
+                })
+                .catch(error => {
+                    alert(`❌ 导入失败\n\n网络错误: ${error.message}`);
+                })
+                .finally(() => {
+                    // 恢复按钮状态
+                    importBtn.disabled = false;
+                    importBtn.textContent = '导入题库';
+                    // 清空文件选择
+                    document.getElementById('csvFileInput').value = '';
+                });
+            }
+        });
+
+        // 预设功能
+        function loadPresets(){
+            fetch('/api/test_presets').then(r=>r.json()).then(data=>{
+                const sel=document.getElementById('presetSelect');
+                sel.innerHTML='';
+                
+                if(data.success && data.presets && data.presets.length > 0){
+                    // 如果有预设，第一个选项为"-- 选择预设 --"，默认选中最后一次保存的预设（第一个返回的预设）
+                    sel.innerHTML='<option value="">-- 选择预设 --</option>';
+                    data.presets.forEach((p, index)=>{
+                        sel.innerHTML+=`<option value="${p.id}" ${index === 0 ? 'selected' : ''}>${p.title}</option>`;
+                    });
+                } else {
+                    // 如果没有预设，显示"没有预设参数"且禁用下拉菜单
+                    sel.innerHTML='<option value="" disabled selected>没有预设参数</option>';
+                }
+                
+                // 如果没有选中任何预设，禁用删除按钮
+                document.getElementById('deletePresetBtn').disabled = !sel.value;
+            });
+        }
+
+        document.getElementById('presetSelect').addEventListener('change',function(){
+            const id=this.value;
+            // 切换启用/禁用删除按钮
+            document.getElementById('deletePresetBtn').disabled=!id;
+            if(!id){document.getElementById('preset_id').value='';return;}
+            fetch(`/api/test_presets/${id}`).then(r=>r.json()).then(response=>{
+                if(!response.success || !response.preset) return;
+                const data = response.preset;
+                document.getElementById('preset_id').value=data.id;
+                document.getElementById('test_title').value=data.title;
+                const fields=[
+                    'single_choice','multiple_choice','true_false','fill_blank','short_answer'
+                ];
+                fields.forEach(ft=>{
+                    document.querySelector(`input[name="${ft}_count"]`).value=data[`${ft}_count`];
+                    document.querySelector(`input[name="${ft}_score"]`).value=data[`${ft}_score`];
+                    const sel=document.querySelector(`select[name="${ft}_bank"]`);
+                    if(sel){sel.value=data[`${ft}_bank_id`] || '';} 
+                });
+                // 设置允许学生自选测试内容选项
+                document.getElementById('allow_student_choice').checked = data.allow_student_choice || false;
+                
+                // 设置填空题AI批改方式
+                const fillBlankGradingMethod = data.fill_blank_grading_method || 'manual';
+                const fillBlankGradingRadio = document.querySelector(`input[name="fill_blank_grading_method"][value="${fillBlankGradingMethod}"]`);
+                if (fillBlankGradingRadio && !fillBlankGradingRadio.disabled) {
+                    fillBlankGradingRadio.checked = true;
+                } else {
+                    // 如果AI不可用，默认选择人工批改
+                    document.getElementById('fill_blank_manual_grading').checked = true;
+                }
+                
+                // 设置简答题AI批改方式
+                const shortAnswerGradingMethod = data.short_answer_grading_method || 'manual';
+                const shortAnswerGradingRadio = document.querySelector(`input[name="short_answer_grading_method"][value="${shortAnswerGradingMethod}"]`);
+                if (shortAnswerGradingRadio && !shortAnswerGradingRadio.disabled) {
+                    shortAnswerGradingRadio.checked = true;
+                } else {
+                    // 如果AI不可用，默认选择人工批改
+                    document.getElementById('short_answer_manual_grading').checked = true;
+                }
+                
+                calculateTotalScore();
+            });
+        });
+
+        // 删除预设
+        document.getElementById('deletePresetBtn').addEventListener('click',function(){
+            const sel=document.getElementById('presetSelect');
+            const id=sel.value;
+            const presetName = sel.options[sel.selectedIndex].text;
+            if(!id)return;
+            if(!confirm(`确定删除预设 "${presetName}" 吗？`)) return;
+            fetch(`/api/test_presets/${id}`,{method:'DELETE'})
+                .then(r=>r.json())
+                .then(data=>{
+                    if(data.success){
+                        alert('✅ 预设删除成功');
+                        sel.value='';
+                        document.getElementById('preset_id').value='';
+                        loadPresets();
+                        this.disabled=true;
+                    }else{
+                        alert('❌ 删除失败: ' + data.message);
+                    }
+                })
+                .catch(error=>{
+                    alert('❌ 删除失败: ' + error.message);
+                });
+        });
+
+        loadPresets();
+
+        // 检查AI批改配置状态
+        function checkAIGradingStatus() {
+            fetch('/api/ai_grading_status')
+                .then(r => r.json())
+                .then(data => {
+                    // 处理填空题AI批改设置
+                    const fillBlankAiRadio = document.getElementById('fill_blank_ai_grading');
+                    const fillBlankManualRadio = document.getElementById('fill_blank_manual_grading');
+                    const fillBlankStatusText = document.getElementById('fillBlankAiGradingStatus');
+                    const fillBlankAiLabel = document.getElementById('fill_blank_ai_grading_label');
+                    
+                    // 处理简答题AI批改设置
+                    const shortAnswerAiRadio = document.getElementById('short_answer_ai_grading');
+                    const shortAnswerManualRadio = document.getElementById('short_answer_manual_grading');
+                    const shortAnswerStatusText = document.getElementById('shortAnswerAiGradingStatus');
+                    const shortAnswerAiLabel = document.getElementById('short_answer_ai_grading_label');
+                    
+                    if (data.enabled) {
+                        // 填空题AI批改可用
+                        fillBlankAiRadio.disabled = false;
+                        fillBlankAiRadio.style.opacity = '1';
+                        fillBlankAiLabel.style.opacity = '1';
+                        fillBlankAiLabel.style.color = '';
+                        fillBlankStatusText.style.display = 'none';
+                        // 默认选择人工批改
+                        fillBlankManualRadio.checked = true;
+                        fillBlankAiRadio.checked = false;
+                        
+                        // 简答题AI批改可用
+                        shortAnswerAiRadio.disabled = false;
+                        shortAnswerAiRadio.style.opacity = '1';
+                        shortAnswerAiLabel.style.opacity = '1';
+                        shortAnswerAiLabel.style.color = '';
+                        shortAnswerStatusText.style.display = 'none';
+                        // AI配置测试通过，默认选择AI批改
+                        shortAnswerAiRadio.checked = true;
+                        shortAnswerManualRadio.checked = false;
+                    } else {
+                        // 填空题AI批改不可用
+                        fillBlankAiRadio.disabled = true;
+                        fillBlankAiRadio.style.opacity = '0.4';
+                        fillBlankAiLabel.style.opacity = '0.5';
+                        fillBlankAiLabel.style.color = '#6c757d';
+                        fillBlankStatusText.style.display = 'none';
+                        // 默认选择人工批改
+                        fillBlankManualRadio.checked = true;
+                        fillBlankAiRadio.checked = false;
+                        
+                        // 简答题AI批改不可用
+                        shortAnswerAiRadio.disabled = true;
+                        shortAnswerAiRadio.style.opacity = '0.4';
+                        shortAnswerAiLabel.style.opacity = '0.5';
+                        shortAnswerAiLabel.style.color = '#6c757d';
+                        shortAnswerStatusText.style.display = 'none';
+                        // 如果AI不可用，默认选择人工批改
+                        shortAnswerManualRadio.checked = true;
+                        shortAnswerAiRadio.checked = false;
+                        
+                        // 显示详细错误信息（可选）
+                        if (data.details) {
+                            console.warn('AI配置问题:', data.details);
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error('检查AI配置状态失败:', error);
+                    const aiRadio = document.getElementById('ai_grading');
+                    const statusText = document.getElementById('aiGradingStatus');
+                    
+                    aiRadio.disabled = true;
+                    aiRadio.style.opacity = '0.4';
+                    // 不显示状态信息
+                    statusText.style.display = 'none';
+                });
+        }
+
+        // 初始化
+        initCurrentType();  // 先检查URL参数，设置当前题型
+        loadBankList();
+        calculateTotalScore();
+        checkAIGradingStatus();  // 检查AI配置状态
+
+        document.getElementById('testSettingsForm').addEventListener('submit',function(e){
+            e.preventDefault(); // 阻止默认表单提交
+            
+            const types=['single_choice','multiple_choice','true_false','fill_blank','short_answer'];
+            
+            // 验证题库选择
+            for(const t of types){
+                const cnt=parseInt(document.querySelector(`input[name="${t}_count"]`).value)||0;
+                const sel=document.querySelector(`select[name="${t}_bank"]`);
+                if(cnt>0 && sel && !sel.value){
+                    alert('请为含题量的题型选择题库！');
+                    sel.focus();
+                    return false;
+                }
+            }
+            
+            // 使用 AJAX 提交表单
+            const formData = new FormData(this);
+            const submitBtn = this.querySelector('button[type="submit"]');
+            
+            // 禁用提交按钮
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.textContent = '保存中...';
+            }
+            
+            fetch(this.action, {
+                method: 'POST',
+                body: formData
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    let successMsg = '✅ ' + data.message + '\n\n总分: ' + data.total_score;
+                    
+                    // 如果有警告信息，显示出来
+                    if (data.warnings && data.warnings.length > 0) {
+                        successMsg += '\n\n⚠️ 警告：\n' + data.warnings.join('\n');
+                        successMsg += '\n\n建议：请检查分数设置，确保每个题型的分数大于0';
+                    }
+                    
+                    alert(successMsg);
+                    // 总是刷新预设列表，因为每次保存都会创建预设
+                    loadPresets();
+                } else {
+                    let errorMsg = '❌ ' + data.message;
+                    if (data.errors && data.errors.length > 0) {
+                        errorMsg += '\n\n错误详情：\n' + data.errors.join('\n');
+                    }
+                    alert(errorMsg);
+                }
+            })
+            .catch(error => {
+                alert('❌ 保存失败\n\n网络错误: ' + error.message);
+            })
+            .finally(() => {
+                // 恢复提交按钮
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = '保存设置';
+                }
+            });
+        });
+    </script>
+</body>
+</html>

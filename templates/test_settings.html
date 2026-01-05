@@ -1,0 +1,21 @@
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // 检查简答题题库数量
+        fetch('/api/question_count/short_answer')
+            .then(response => response.json())
+            .then(data => {
+                if (data.count === 0) {
+                    document.getElementById('short_answer_count').disabled = true;
+                    document.getElementById('short_answer_score').disabled = true;
+                    document.getElementById('short_answer_count').value = 0;
+                    document.getElementById('short_answer_score').value = 0;
+                    // 添加提示信息
+                    const shortAnswerDiv = document.getElementById('short_answer_count').closest('.mb-3');
+                    const alertDiv = document.createElement('div');
+                    alertDiv.className = 'alert alert-warning mt-2';
+                    alertDiv.textContent = '简答题题库为空，无法设置题目个数和分数。';
+                    shortAnswerDiv.appendChild(alertDiv);
+                }
+            });
+    });
+</script> 

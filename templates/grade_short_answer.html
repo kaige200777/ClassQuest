@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>批改简答题</title>
+    <link href="{{ url_for('static', filename='bootstrap/css/bootstrap.min.css') }}" rel="stylesheet">
+</head>
+<body class="container mt-4">
+    <h3 class="mb-4">批改简答题</h3>
+
+    <div class="card mb-3">
+        <div class="card-header bg-light"><strong>题目内容</strong></div>
+        <div class="card-body">
+            {{ question.content|safe }}
+            {% if question.image_path %}
+            <img src="{{ url_for('static', filename=question.image_path) }}" class="img-fluid mt-2"/>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-header bg-light"><strong>学生答案</strong></div>
+        <div class="card-body">
+            {{ sa.student_answer|safe }}
+            {% if sa.image_path %}
+            <img src="{{ url_for('static', filename=sa.image_path) }}" class="img-fluid mt-2"/>
+            {% endif %}
+        </div>
+    </div>
+
+    <form method="post">
+        <div class="mb-3">
+            <label class="form-label">得分</label>
+            <input type="number" class="form-control" name="score" value="{{ sa.score or '' }}" min="0">
+        </div>
+        <div class="mb-3">
+            <label class="form-label">教师评语</label>
+            <textarea name="comment" class="form-control" rows="4">{{ sa.comment or '' }}</textarea>
+        </div>
+        <button type="submit" class="btn btn-primary">保存</button>
+        <a href="{{ url_for('short_answer_list') }}" class="btn btn-secondary ms-2">返回列表</a>
+    </form>
+</body>
+</html> 

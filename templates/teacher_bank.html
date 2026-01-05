@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>题库内容</title>
+    <link href="{{ url_for('static', filename='bootstrap/css/bootstrap.min.css') }}" rel="stylesheet">
+</head>
+<body class="container mt-4">
+    <h3 id="bankTitle">题库内容</h3>
+    <div id="bankContentContainer">
+        <div class="text-muted text-center" id="loadingTip">正在加载题库内容...</div>
+    </div>
+    <script>
+    const bankId = {{ bank_id }};
+    function renderBankContent(data) {
+      document.getElementById('bankTitle').innerText = `${data.bank_name}（${typeMap[data.question_type]}）`;
+      let html = '<form id="bankContentForm"><div class="table-responsive"><table class="table table-bordered"><thead><tr>';
+      if(data.question_type==='single_choice'||data.question_type==='multiple_choice') {
+        html += '<th>题目</th><th>A</th><th>B</th><th>C</th><th>D</th>';
+        if(data.question_type==='multiple_choice') html+='<th>E</th>';
+        html += '<th>答案</th><th>分值</th><th>解析</th>';
+      } else if(data.question_type==='true_false') {
+        html += '<th>题目</th><th>答案</th><th>分值</th><th>解析</th>';
+      } else {
+        html += '<th>题目</th><th>答案</th><th>分值</th><th>解析</th>';
+      }
+      html += '</tr></thead><tbody>';
+      data.questions.forEach((q, i) => {
+        html += '<tr>';
+        html += `<td><textarea class='form-control allow-img-paste' name='content' rows='3'>${q.content||''}</textarea></td>`;
+        if(data.question_type==='single_choice'||data.question_type==='multiple_choice') {
+          html += `<td><input class='form-control' name='option_a' value='${q.option_a||''}'></td>`;
+          html += `<td><input class='form-control' name='option_b' value='${q.option_b||''}'></td>`;
+          html += `<td><input class='form-control' name='option_c' value='${q.option_c||''}'></td>`;
+          html += `<td><input class='form-control' name='option_d' value='${q.option_d||''}'></td>`;
+          if(data.question_type==='multiple_choice') html += `<td><input class='form-control' name='option_e' value='${q.option_e||''}'></td>`;
+        }
+        html += `<td><input class='form-control' name='correct_answer' value='${q.correct_answer||''}'></td>`;
+        html += `<td><input class='form-control' name='score' type='number' value='${q.score||''}'></td>`;
+        html += `<td><input class='form-control' name='explanation' value='${q.explanation||''}'></td>`;
+        html += '</tr>';
+      });
+      html += '</tbody></table></div>';
+      html += '<button type="button" class="btn btn-success w-100" onclick="saveBankContent()">保存修改</button></form>';
+      document.getElementById('bankContentContainer').innerHTML = html;
+      // 为动态插入的文本框启用图片粘贴
+      document.querySelectorAll('textarea.allow-img-paste').forEach(el=>window.attachImagePaste&&attachImagePaste(el));
+    }
+    function saveBankContent() {
+      const form = document.getElementById('bankContentForm');
+      const rows = Array.from(form.querySelectorAll('tbody tr'));
+      const questions = rows.map(row => {
+        const get = name => {
+          const el = row.querySelector(`[name='${name}']`);
+          return el ? el.value : '';
+        };
+        return {
+          content: get('content'),
+          option_a: get('option_a'),
+          option_b: get('option_b'),
+          option_c: get('option_c'),
+          option_d: get('option_d'),
+          option_e: get('option_e'),
+          correct_answer: get('correct_answer'),
+          score: get('score'),
+          explanation: get('explanation')
+        };
+      });
+      fetch(`/api/question_bank/${bankId}/questions`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({questions})
+      }).then(r=>r.json()).then(data => {
+        if(data.success) alert('保存成功');
+        else alert('保存失败');
+      });
+    }
+    const typeMap = {
+      'single_choice': '单选题',
+      'multiple_choice': '多选题',
+      'true_false': '判断题',
+      'fill_blank': '填空题',
+      'short_answer': '简答题'
+    };
+    fetch(`/api/question_bank/${bankId}/questions`).then(r=>r.json()).then(data => {
+      renderBankContent(data);
+    });
+    </script>
+    <script src="{{ url_for('static', filename='js/paste_image.js') }}"></script>
+</body>
+</html> 

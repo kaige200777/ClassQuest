@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>开始测试</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header text-center">
+                    <h2>学习任务单系统</h2>
+                </div>
+                <div class="card-body">
+                    {% with messages = get_flashed_messages() %}
+                        {% if messages %}
+                            {% for message in messages %}
+                            <div class="alert alert-warning alert-dismissible fade show" role="alert">
+                                <strong>⚠️ 提示：</strong> {{ message }}
+                                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                            </div>
+                            {% endfor %}
+                        {% endif %}
+                    {% endwith %}
+                    <form method="post">
+                        <div class="mb-3">
+                            <label for="name" class="form-label">姓名</label>
+                            <input type="text" class="form-control" id="name" name="name" value="{{ request.form.name }}" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="class_number" class="form-label">班级号</label>
+                            <input type="text" class="form-control" id="class_number" name="class_number" value="{{ request.form.class_number }}" required>
+                        </div>
+                        <div class="mb-3" id="testContentDiv" style="display: none;">
+                            <label for="test_content" class="form-label">测试内容</label>
+                            <select class="form-select" id="test_content" name="test_content">
+                                <option value="">-- 请选择测试内容 --</option>
+                            </select>
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100">开始测试</button>
+                    </form>
+                    
+
+                </div>
+            </div>
+            <div class="text-center mt-3">
+                <a href="/" class="link-primary">返回首页</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 页面加载时检查是否允许学生自选测试内容
+        document.addEventListener('DOMContentLoaded', function() {
+            checkTestSettings();
+        });
+
+        function checkTestSettings() {
+            fetch('/api/current_test_settings')
+                .then(response => response.json())
+                .then(data => {
+                    console.log('测试设置:', data);
+                    if (data.allow_student_choice) {
+                        // 允许学生自选，显示下拉框并加载预设列表
+                        console.log('允许学生自选，显示下拉框');
+                        document.getElementById('testContentDiv').style.display = 'block';
+                        loadTestPresets();
+                    } else {
+                        // 不允许学生自选，隐藏下拉框
+                        console.log('不允许学生自选，隐藏下拉框');
+                        document.getElementById('testContentDiv').style.display = 'none';
+                    }
+                })
+                .catch(error => {
+                    console.error('获取测试设置失败:', error);
+                });
+        }
+
+        function loadTestPresets() {
+            console.log('开始加载预设列表...');
+            fetch('/api/test_presets_public')
+                .then(response => {
+                    console.log('响应状态:', response.status);
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('预设列表数据:', data);
+                    console.log('data 的类型:', typeof data);
+                    console.log('data.presets 的类型:', typeof data.presets);
+                    console.log('data.presets 是否为数组:', Array.isArray(data.presets));
+                    
+                    const select = document.getElementById('test_content');
+                    select.innerHTML = '<option value="">-- 请选择测试内容 --</option>';
+                    
+                    if (data.presets && Array.isArray(data.presets) && data.presets.length > 0) {
+                        console.log(`找到 ${data.presets.length} 个预设`);
+                        data.presets.forEach(preset => {
+                            console.log(`添加预设: ${preset.title} (ID: ${preset.id})`);
+                            const option = document.createElement('option');
+                            option.value = preset.id;
+                            option.textContent = preset.title;
+                            select.appendChild(option);
+                        });
+                    } else {
+                        console.log('没有找到预设或 data.presets 不是数组');
+                        console.log('data.presets 的值:', data.presets);
+                    }
+                })
+                .catch(error => {
+                    console.error('加载测试预设失败:', error);
+                    console.error('错误堆栈:', error.stack);
+                });
+        }
+    </script>
+</body>
+</html> 

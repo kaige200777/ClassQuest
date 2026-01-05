@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>学习任务单系统</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h1 class="mb-0">学习任务单系统</h1>
+                    <a href="/teacher/login" class="link-primary">管理</a>
+                </div>
+                <div class="card-body">
+                    {% with messages = get_flashed_messages() %}
+                        {% if messages %}
+                            {% for message in messages %}
+                            <div class="alert alert-warning alert-dismissible fade show" role="alert">
+                                <strong>⚠️ 提示：</strong> {{ message }}
+                                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                            </div>
+                            {% endfor %}
+                        {% endif %}
+                    {% endwith %}
+                    <form method="post" action="/student/start" class="mb-3">
+                        <div class="mb-3">
+                            <label for="name" class="form-label">姓名</label>
+                            <input type="text" class="form-control" id="name" name="name" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="class_number" class="form-label">班级号</label>
+                            <input type="text" class="form-control" id="class_number" name="class_number" required>
+                        </div>
+                        <div class="mb-3" id="testContentDiv" style="display: none;">
+                            <label for="test_content" class="form-label">测试内容</label>
+                            <select class="form-select" id="test_content" name="test_content">
+                                <option value="">-- 请选择测试内容 --</option>
+                            </select>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-primary flex-grow-1">开始学习</button>
+                            <button type="button" class="btn btn-secondary" id="historyBtn" disabled>历史记录</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // 页面加载时检查是否允许学生自选测试内容
+        document.addEventListener('DOMContentLoaded', function() {
+            checkTestSettings();
+            setupHistoryButton();
+        });
+
+        function checkTestSettings() {
+            fetch('/api/current_test_settings')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.allow_student_choice) {
+                        // 允许学生自选，显示下拉框并加载预设列表
+                        document.getElementById('testContentDiv').style.display = 'block';
+                        loadTestPresets();
+                    } else {
+                        // 不允许学生自选，隐藏下拉框
+                        document.getElementById('testContentDiv').style.display = 'none';
+                    }
+                })
+                .catch(error => {
+                    console.error('获取测试设置失败:', error);
+                });
+        }
+
+        function loadTestPresets() {
+            fetch('/api/test_presets_public')
+                .then(response => response.json())
+                .then(data => {
+                    const select = document.getElementById('test_content');
+                    select.innerHTML = '<option value="">-- 请选择测试内容 --</option>';
+                    
+                    if (data.presets && Array.isArray(data.presets)) {
+                        data.presets.forEach(preset => {
+                            const option = document.createElement('option');
+                            option.value = preset.id;
+                            option.textContent = preset.title;
+                            select.appendChild(option);
+                        });
+                    }
+                })
+                .catch(error => {
+                    console.error('加载测试预设失败:', error);
+                });
+        }
+
+        function setupHistoryButton() {
+            const nameInput = document.getElementById('name');
+            const classInput = document.getElementById('class_number');
+            const historyBtn = document.getElementById('historyBtn');
+
+            // 监听输入变化，检查是否有历史记录
+            function checkHistory() {
+                const name = nameInput.value.trim();
+                const classNumber = classInput.value.trim();
+                
+                if (name && classNumber) {
+                    fetch('/api/check_student_history', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ name: name, class_number: classNumber })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        historyBtn.disabled = !data.has_history;
+                        if (data.has_history) {
+                            historyBtn.className = 'btn btn-primary';
+                        } else {
+                            historyBtn.className = 'btn btn-secondary';
+                        }
+                    })
+                    .catch(error => {
+                        console.error('检查历史记录失败:', error);
+                        historyBtn.disabled = true;
+                        historyBtn.className = 'btn btn-secondary';
+                    });
+                } else {
+                    historyBtn.disabled = true;
+                    historyBtn.className = 'btn btn-secondary';
+                }
+            }
+
+            // 添加输入事件监听
+            nameInput.addEventListener('input', checkHistory);
+            classInput.addEventListener('input', checkHistory);
+
+            // 处理历史记录按钮点击事件
+            historyBtn.addEventListener('click', function() {
+                const name = nameInput.value.trim();
+                const classNumber = classInput.value.trim();
+                
+                if (name && classNumber) {
+                    // 创建一个隐藏表单提交，模拟登录并跳转到学生仪表板
+                    const form = document.createElement('form');
+                    form.method = 'POST';
+                    form.action = '/student/history_login';
+                    
+                    const nameField = document.createElement('input');
+                    nameField.type = 'hidden';
+                    nameField.name = 'name';
+                    nameField.value = name;
+                    
+                    const classField = document.createElement('input');
+                    classField.type = 'hidden';
+                    classField.name = 'class_number';
+                    classField.value = classNumber;
+                    
+                    form.appendChild(nameField);
+                    form.appendChild(classField);
+                    document.body.appendChild(form);
+                    form.submit();
+                }
+            });
+        }
+    </script>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html> 

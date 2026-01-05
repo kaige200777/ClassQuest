@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>学习任务单系统</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        /* 题干内容自适应 */
+        .question-content {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            max-width: 100%;
+        }
+        /* 题干中的图片自适应 */
+        .question-content img {
+            max-width: 100%;
+            height: auto;
+            display: block;
+            margin: 10px 0;
+        }
+        
+        /* 提交状态样式 */
+        #submitStatus {
+            max-width: 500px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            border: 1px solid #dee2e6;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .progress {
+            background-color: #e9ecef;
+            height: 8px !important;
+            border-radius: 4px;
+        }
+        
+        .progress-bar {
+            transition: width 0.8s ease;
+            background: linear-gradient(90deg, #007bff, #0056b3);
+            border-radius: 4px;
+        }
+        
+        /* 禁用状态的按钮样式 */
+        #submitBtn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        
+        /* 加载动画 */
+        .spinner-border {
+            width: 1.5rem;
+            height: 1.5rem;
+        }
+        
+        /* 状态文本样式 */
+        #statusText {
+            font-size: 1.1rem;
+        }
+        
+        #progressText {
+            font-size: 0.9rem;
+            margin-top: 0.5rem;
+            display: block;
+        }
+    </style>
+</head>
+<body class="container mt-5">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="#">学习任务单系统</a>
+            <div class="navbar-text text-light">
+                学生：{{ session.student_name }} | 班级：{{ session.class_number }}
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="text-center">{{ test_title }}</h3>
+            </div>
+            <div class="card-body">
+                <form action="{{ url_for('submit_test') }}" method="post" autocomplete="off">
+                    <!-- 防止浏览器自动填充的随机token -->
+                    <input type="hidden" name="form_token" id="form_token" value="">
+                    <input type="hidden" name="test_session" id="test_session" value="">
+                    {% if single_choice_questions %}
+                    <div class="card mb-4">
+                        <div class="card-header bg-primary text-white">
+                            <h5 class="mb-0">单选题（每题{{ test.single_choice_score }}分）</h5>
+                        </div>
+                        <div class="card-body">
+                            {% for question in single_choice_questions %}
+                            <div class="card mb-3">
+                                <div class="card-header">
+                                    第{{ loop.index }}题
+                                </div>
+                                <div class="card-body">
+                                    <div class="fw-bold question-content">{{ question.content|replace('\n', '<br>')|safe }}</div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="answer_{{ question.id }}" id="a{{ question.id }}" value="A" autocomplete="off">
+                                        <label class="form-check-label" for="a{{ question.id }}">A. {{ question.option_a }}</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="answer_{{ question.id }}" id="b{{ question.id }}" value="B" autocomplete="off">
+                                        <label class="form-check-label" for="b{{ question.id }}">B. {{ question.option_b }}</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="answer_{{ question.id }}" id="c{{ question.id }}" value="C" autocomplete="off">
+                                        <label class="form-check-label" for="c{{ question.id }}">C. {{ question.option_c }}</label>
+                                    </div>
+                        <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="answer_{{ question.id }}" id="d{{ question.id }}" value="D" autocomplete="off">
+                                        <label class="form-check-label" for="d{{ question.id }}">D. {{ question.option_d }}</label>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    {% if multiple_choice_questions %}
+                    <div class="card mb-4">
+                        <div class="card-header bg-success text-white">
+                            <h5 class="mb-0">多选题（每题{{ test.multiple_choice_score }}分）</h5>
+                        </div>
+                        <div class="card-body">
+                            {% for question in multiple_choice_questions %}
+                            <div class="card mb-3">
+                                <div class="card-header">
+                                    第{{ loop.index }}题
+                                </div>
+                                <div class="card-body">
+                                    <div class="fw-bold question-content">{{ question.content|replace('\n', '<br>')|safe }}</div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="answer_{{ question.id }}" id="a{{ question.id }}" value="A" autocomplete="off">
+                                        <label class="form-check-label" for="a{{ question.id }}">A. {{ question.option_a }}</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="answer_{{ question.id }}" id="b{{ question.id }}" value="B" autocomplete="off">
+                                        <label class="form-check-label" for="b{{ question.id }}">B. {{ question.option_b }}</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="answer_{{ question.id }}" id="c{{ question.id }}" value="C" autocomplete="off">
+                                        <label class="form-check-label" for="c{{ question.id }}">C. {{ question.option_c }}</label>
+                        </div>
+                        <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="answer_{{ question.id }}" id="d{{ question.id }}" value="D" autocomplete="off">
+                                        <label class="form-check-label" for="d{{ question.id }}">D. {{ question.option_d }}</label>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    {% if true_false_questions %}
+                    <div class="card mb-4">
+                        <div class="card-header bg-info text-white">
+                            <h5 class="mb-0">判断题（每题{{ test.true_false_score }}分）</h5>
+                        </div>
+                        <div class="card-body">
+                            {% for question in true_false_questions %}
+                            <div class="card mb-3">
+                                <div class="card-header">
+                                    第{{ loop.index }}题
+                                </div>
+                                <div class="card-body">
+                                    <div class="fw-bold question-content">{{ question.content|replace('\n', '<br>')|safe }}</div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="answer_{{ question.id }}" id="true{{ question.id }}" value="正确" autocomplete="off">
+                                        <label class="form-check-label" for="true{{ question.id }}">正确</label>
+                        </div>
+                        <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="answer_{{ question.id }}" id="false{{ question.id }}" value="错误" autocomplete="off">
+                                        <label class="form-check-label" for="false{{ question.id }}">错误</label>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    {% if fill_blank_questions %}
+                    <div class="card mb-4">
+                        <div class="card-header bg-warning text-dark">
+                            <h5 class="mb-0">填空题（每题{{ test.fill_blank_score }}分）</h5>
+                        </div>
+                        <div class="card-body">
+                            {% for question in fill_blank_questions %}
+                            <div class="card mb-3">
+                                <div class="card-header">
+                                    第{{ loop.index }}题
+                                </div>
+                                <div class="card-body">
+                                    <div class="fw-bold question-content">{{ question.content|replace('\n', '<br>')|safe }}</div>
+                                    <div class="form-group">
+                                        <div class="row g-2">
+                                            {% for i in range(1, 5) %}
+                                            <div class="col">
+                                                <input type="text" class="form-control" name="answer_{{ question.id }}_{{ i }}" placeholder="填空{{ i }}" autocomplete="off" data-question-id="{{ question.id }}" data-blank-index="{{ i }}">
+                                            </div>
+                                            {% endfor %}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    {% if short_answer_questions %}
+                    <div class="card mb-4">
+                        <div class="card-header bg-danger text-white">
+                            <h5 class="mb-0">简答题（每题{{ test.short_answer_score }}分）</h5>
+                        </div>
+                        <div class="card-body">
+                            {% for question in short_answer_questions %}
+                            <div class="card mb-3">
+                                <div class="card-header">
+                                    第{{ loop.index }}题
+                                </div>
+                                <div class="card-body">
+                                    <div class="fw-bold question-content">{{ question.content|replace('\n', '<br>')|safe }}</div>
+                                    <div class="form-group">
+                                        <textarea class="form-control allow-img-paste" name="answer_{{ question.id }}" rows="4" placeholder="答案最多600字，可粘贴一张图片" maxlength="600" data-question-id="{{ question.id }}" autocomplete="off"></textarea>
+                                        <small class="text-muted">已输入 <span id="charCount_{{ question.id }}">0</span>/600 字</small>
+                                    </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <div class="text-center mt-4">
+                        <button type="button" id="submitBtn" class="btn btn-primary btn-lg" onclick="checkUnanswered()">提交答案</button>
+                        
+                        <!-- 提交状态区域 -->
+                        <div id="submitStatus" class="mt-4" style="display: none;">
+                            <div class="d-flex justify-content-center align-items-center mb-3">
+                                <div class="spinner-border text-primary me-2" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                                <span id="statusText" class="text-primary fw-bold">正在提交答案，请稍等...</span>
+                            </div>
+                            <div class="progress mb-2">
+                                <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated" 
+                                     role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                            </div>
+                            <small id="progressText" class="text-muted d-block text-center">正在处理您的答案...</small>
+                        </div>
+                        
+                        <!-- 超时提示区域 -->
+                        <div id="timeoutAlert" class="alert alert-warning mt-3" style="display: none;">
+                            <h6 class="alert-heading"><i class="bi bi-clock"></i> 处理时间较长</h6>
+                            <p class="mb-2">AI正在仔细批改您的简答题，这可能需要一些时间。</p>
+                            <small class="text-muted">
+                                <strong>请耐心等待，不要关闭页面或重复提交。</strong><br>
+                                如果长时间无响应，可能是网络问题，请联系老师协助。
+                            </small>
+                        </div>
+                    </div>
+                    
+                    <!-- 固定位置的状态提示 -->
+                    <div id="fixedStatusIndicator" style="display: none; position: fixed; top: 20px; right: 20px; z-index: 1000; background: rgba(0,123,255,0.9); color: white; padding: 10px 15px; border-radius: 20px; font-size: 14px; box-shadow: 0 2px 10px rgba(0,0,0,0.3);">
+                        <i class="spinner-border spinner-border-sm me-2"></i>
+                        <span id="fixedStatusText">正在提交...</span>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ url_for('static', filename='js/paste_image.js') }}"></script>
+    <script>
+    // 防止浏览器自动填充 - 页面加载时清空所有表单字段
+    window.addEventListener('load', function() {
+        // 设置随机token防止浏览器缓存表单数据
+        var timestamp = new Date().getTime();
+        var randomToken = 'test_' + timestamp + '_' + Math.random().toString(36).substr(2, 9);
+        document.getElementById('form_token').value = randomToken;
+        document.getElementById('test_session').value = 'session_' + timestamp;
+        
+        // 清空所有单选框和复选框的选中状态
+        document.querySelectorAll('input[type="radio"], input[type="checkbox"]').forEach(function(input) {
+            input.checked = false;
+        });
+        
+        // 清空所有文本输入框和文本域
+        document.querySelectorAll('input[type="text"], textarea').forEach(function(input) {
+            input.value = '';
+        });
+        
+        // 重置字符计数器
+        document.querySelectorAll('[id^="charCount_"]').forEach(function(counter) {
+            counter.textContent = '0';
+        });
+    });
+    
+    // 防止浏览器前进后退时的自动填充
+    window.addEventListener('pageshow', function(event) {
+        if (event.persisted) {
+            // 页面从缓存中恢复，重新设置token并清空所有表单字段
+            var timestamp = new Date().getTime();
+            var randomToken = 'test_' + timestamp + '_' + Math.random().toString(36).substr(2, 9);
+            document.getElementById('form_token').value = randomToken;
+            document.getElementById('test_session').value = 'session_' + timestamp;
+            
+            document.querySelectorAll('input[type="radio"], input[type="checkbox"]').forEach(function(input) {
+                input.checked = false;
+            });
+            
+            document.querySelectorAll('input[type="text"], textarea').forEach(function(input) {
+                input.value = '';
+            });
+            
+            // 重置字符计数器
+            document.querySelectorAll('[id^="charCount_"]').forEach(function(counter) {
+                counter.textContent = '0';
+            });
+        }
+    });
+    
+    // 检查是否有简答题
+    function hasShortAnswerQuestions() {
+        return document.querySelectorAll('textarea[name^="answer_"]').length > 0;
+    }
+    
+    // 显示提交进度
+    function showSubmitProgress() {
+        const submitBtn = document.getElementById('submitBtn');
+        const submitStatus = document.getElementById('submitStatus');
+        const statusText = document.getElementById('statusText');
+        const progressBar = document.getElementById('progressBar');
+        const progressText = document.getElementById('progressText');
+        
+        // 禁用提交按钮
+        submitBtn.disabled = true;
+        submitBtn.textContent = '提交中...';
+        
+        // 显示进度条
+        submitStatus.style.display = 'block';
+        
+        // 显示固定状态指示器
+        const fixedIndicator = document.getElementById('fixedStatusIndicator');
+        const fixedStatusText = document.getElementById('fixedStatusText');
+        if (fixedIndicator) {
+            fixedIndicator.style.display = 'block';
+            fixedStatusText.textContent = '正在提交...';
+        }
+        
+        // 自动滚动到提交状态区域
+        setTimeout(() => {
+            submitStatus.scrollIntoView({ 
+                behavior: 'smooth', 
+                block: 'center' 
+            });
+        }, 100);
+        
+        // 确保进度条初始化为0%
+        progressBar.style.width = '0%';
+        progressBar.setAttribute('aria-valuenow', '0');
+        
+        // 检查是否有简答题需要AI批改
+        const shortAnswerCount = document.querySelectorAll('textarea[name^="answer_"]').length;
+        
+        if (shortAnswerCount > 0) {
+            // 有简答题，显示AI批改进度
+            let progress = 0;
+            let stage = 0;
+            const stages = [
+                { threshold: 20, status: '正在提交答案，请稍等...', detail: '正在处理您的答案...' },
+                { threshold: 40, status: 'AI正在批改简答题，请稍等...', detail: `正在批改${shortAnswerCount}道简答题，请耐心等待...` },
+                { threshold: 60, status: 'AI正在分析答案内容...', detail: '正在进行语义理解和要点覆盖度分析...' },
+                { threshold: 80, status: 'AI正在生成评语和反馈...', detail: '正在生成个性化学习建议和改进意见...' },
+                { threshold: 95, status: '正在保存批改结果...', detail: '即将完成，请稍等...' }
+            ];
+            
+            // 立即开始显示进度
+            progressBar.style.width = '5%';
+            statusText.textContent = stages[0].status;
+            progressText.textContent = stages[0].detail;
+            
+            const progressInterval = setInterval(() => {
+                // 根据简答题数量调整进度速度
+                const baseIncrement = 3;
+                const adjustedIncrement = Math.max(1, baseIncrement - (shortAnswerCount * 0.3));
+                progress += Math.random() * adjustedIncrement + 1;
+                
+                // 限制最大进度，等待实际完成
+                if (progress > 95) progress = 95;
+                
+                // 更新进度条，确保有视觉反馈
+                progressBar.style.width = Math.max(5, progress) + '%';
+                progressBar.setAttribute('aria-valuenow', Math.max(5, progress));
+                
+                // 更新状态文本
+                const currentStage = stages.find(s => progress < s.threshold) || stages[stages.length - 1];
+                if (stage !== stages.indexOf(currentStage)) {
+                    stage = stages.indexOf(currentStage);
+                    statusText.textContent = currentStage.status;
+                    progressText.textContent = currentStage.detail;
+                    
+                    // 更新固定指示器
+                    const fixedStatusText = document.getElementById('fixedStatusText');
+                    if (fixedStatusText) {
+                        fixedStatusText.textContent = currentStage.status;
+                    }
+                    
+                    // 状态变化时轻微滚动确保可见
+                    submitStatus.scrollIntoView({ 
+                        behavior: 'smooth', 
+                        block: 'center' 
+                    });
+                }
+                
+                // 如果达到95%，停止自动增长
+                if (progress >= 95) {
+                    clearInterval(progressInterval);
+                    
+                    // 显示最终等待状态
+                    statusText.textContent = '正在完成最后步骤...';
+                    progressText.textContent = '正在保存结果并准备跳转...';
+                }
+            }, 1000); // 每秒更新一次
+            
+            // 存储interval ID，以便在页面跳转时清理
+            window.submitProgressInterval = progressInterval;
+            
+            // 显示预计时间提示和友好提醒
+            const estimatedTime = Math.ceil((30 + shortAnswerCount * 15) / 60);
+            
+            // 20秒后显示友好提示
+            setTimeout(() => {
+                const timeoutAlert = document.getElementById('timeoutAlert');
+                if (timeoutAlert && progress < 80) {
+                    timeoutAlert.style.display = 'block';
+                }
+            }, 20000);
+            
+            // 如果预计时间较长，显示时间提示
+            if (estimatedTime > 1) {
+                setTimeout(() => {
+                    if (progress < 50) { // 只在还在处理时显示
+                        progressText.textContent += ` (预计还需${estimatedTime}分钟)`;
+                    }
+                }, 15000); // 15秒后显示预计时间
+            }
+        } else {
+            // 没有简答题，快速完成
+            statusText.textContent = '正在提交答案...';
+            progressText.textContent = '正在保存您的答案...';
+            
+            // 快速进度动画
+            let quickProgress = 0;
+            const quickInterval = setInterval(() => {
+                quickProgress += 20;
+                if (quickProgress >= 100) {
+                    quickProgress = 100;
+                    clearInterval(quickInterval);
+                }
+                progressBar.style.width = quickProgress + '%';
+                progressBar.setAttribute('aria-valuenow', quickProgress);
+            }, 100);
+        }
+    }
+    
+    // 提交表单
+    function submitForm() {
+        showSubmitProgress();
+        
+        // 防止重复提交
+        const form = document.querySelector('form');
+        if (form.dataset.submitted === 'true') {
+            return false;
+        }
+        form.dataset.submitted = 'true';
+        
+        // 提交表单
+        form.submit();
+        
+        // 设置超时保护，根据简答题数量动态调整超时时间
+        const shortAnswerCount = document.querySelectorAll('textarea[name^="answer_"]').length;
+        const baseTimeout = 30000; // 基础30秒
+        const perQuestionTimeout = 15000; // 每个简答题额外15秒
+        const maxTimeout = 120000; // 最大2分钟
+        
+        const timeoutDuration = Math.min(baseTimeout + (shortAnswerCount * perQuestionTimeout), maxTimeout);
+        
+        // 显示预计等待时间
+        if (shortAnswerCount > 0) {
+            const estimatedMinutes = Math.ceil(timeoutDuration / 60000);
+            console.log(`预计AI批改时间: ${estimatedMinutes}分钟 (${shortAnswerCount}道简答题)`);
+        }
+        
+        const timeoutId = setTimeout(() => {
+            if (window.submitProgressInterval) {
+                clearInterval(window.submitProgressInterval);
+            }
+            
+            const submitBtn = document.getElementById('submitBtn');
+            const submitStatus = document.getElementById('submitStatus');
+            const statusText = document.getElementById('statusText');
+            const progressText = document.getElementById('progressText');
+            
+            if (submitBtn && submitBtn.disabled) {
+                // 显示超时状态
+                statusText.textContent = '提交超时';
+                statusText.className = 'text-warning fw-bold';
+                progressText.textContent = '网络连接可能有问题，请重试';
+                
+                // 更新固定指示器
+                const fixedIndicator = document.getElementById('fixedStatusIndicator');
+                const fixedStatusText = document.getElementById('fixedStatusText');
+                if (fixedIndicator && fixedStatusText) {
+                    fixedStatusText.textContent = '提交超时';
+                    fixedIndicator.style.background = 'rgba(220, 53, 69, 0.9)';
+                }
+                
+                // 3秒后恢复按钮
+                setTimeout(() => {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = '重新提交';
+                    submitStatus.style.display = 'none';
+                    form.dataset.submitted = 'false';
+                    
+                    // 隐藏固定指示器
+                    if (fixedIndicator) {
+                        fixedIndicator.style.display = 'none';
+                    }
+                    
+                    // 显示友好的超时提示
+                    const timeoutMinutes = Math.ceil(timeoutDuration / 60000);
+                    alert(`提交超时（等待了${timeoutMinutes}分钟）\n\n可能的原因：\n1. 网络连接不稳定\n2. AI服务响应较慢\n3. 简答题较多需要更长时间\n\n请检查网络连接后重试，或联系老师协助。`);
+                }, 3000);
+            }
+        }, timeoutDuration);
+        
+        // 存储超时ID，以便在成功提交时清除
+        window.submitTimeoutId = timeoutId;
+    }
+    
+    function checkUnanswered() {
+        var unanswered = [];
+        var qIndex = 1;
+        // 单选、多选、判断、填空、简答
+        document.querySelectorAll('input[type="radio"]').forEach(function(radio) {
+            if (radio.name && !unanswered.includes(radio.name)) {
+                var checked = document.querySelector('input[name="' + radio.name + '"]:checked');
+                if (!checked) {
+                    unanswered.push(radio.name);
+                }
+            }
+        });
+        document.querySelectorAll('input[type="checkbox"]').forEach(function(checkbox) {
+            if (checkbox.name && !unanswered.includes(checkbox.name)) {
+                var checked = document.querySelectorAll('input[name="' + checkbox.name + '"]:checked');
+                if (checked.length === 0) {
+                    unanswered.push(checkbox.name);
+                }
+            }
+        });
+        // 处理填空题：同一题 id 有多个输入，任意一空填写即可视为已答
+        var fillGroups = {};
+        document.querySelectorAll('input[type="text"]').forEach(function(input) {
+            if(!input.name) return;
+            var parts = input.name.split('_');
+            if(parts.length===3){ // 填空题 answer_{id}_{idx}
+                var qid = parts[1];
+                if(!fillGroups[qid]) fillGroups[qid] = false;
+                if(input.value.trim() !== '') fillGroups[qid] = true;
+            }else{
+                // 非填空题文本（如简答题）
+                if(input.value.trim() === '') unanswered.push(input.name);
+            }
+        });
+        Object.keys(fillGroups).forEach(function(qid){
+            if(!fillGroups[qid]){
+                unanswered.push('answer_'+qid+'_1'); // 占位，用于后续提取题号
+            }
+        });
+        document.querySelectorAll('textarea').forEach(function(input) {
+            if (input.name && input.value.trim() === '') {
+                unanswered.push(input.name);
+            }
+        });
+        if (unanswered.length > 0) {
+            // 提取题号
+            var ids = unanswered.map(function(name) {
+                var id = name.split('_')[1];
+                var card = document.querySelector('[name="' + name + '"]').closest('.card');
+                var header = card ? card.querySelector('.card-header') : null;
+                var num = header ? header.textContent.replace(/[^\d]/g, '') : id;
+                return num;
+            });
+            var msg = '您还有以下题目未作答：' + ids.join('、') + '\n是否继续提交？';
+            if (confirm(msg)) {
+                submitForm();
+            }
+        } else {
+            submitForm();
+        }
+    }
+    
+    // 页面卸载时清理定时器和固定指示器
+    window.addEventListener('beforeunload', function() {
+        if (window.submitProgressInterval) {
+            clearInterval(window.submitProgressInterval);
+        }
+        if (window.submitTimeoutId) {
+            clearTimeout(window.submitTimeoutId);
+        }
+        
+        // 隐藏固定指示器
+        const fixedIndicator = document.getElementById('fixedStatusIndicator');
+        if (fixedIndicator) {
+            fixedIndicator.style.display = 'none';
+        }
+    });
+    
+    // 页面可见性变化时的处理
+    document.addEventListener('visibilitychange', function() {
+        if (document.hidden) {
+            // 页面隐藏时暂停进度动画以节省资源
+            const progressBar = document.getElementById('progressBar');
+            if (progressBar) {
+                progressBar.classList.remove('progress-bar-animated');
+            }
+        } else {
+            // 页面显示时恢复进度动画
+            const progressBar = document.getElementById('progressBar');
+            if (progressBar && progressBar.style.width !== '100%') {
+                progressBar.classList.add('progress-bar-animated');
+            }
+        }
+    });
+    </script>
+</body>
+</html> 

@@ -1,0 +1,10 @@
+Flask==3.0.2
+Flask-SQLAlchemy==3.1.1
+SQLAlchemy==2.0.27
+waitress==2.1.2
+pandas==2.0.3
+python-dotenv==0.19.0
+Werkzeug==3.0.1
+numpy==1.24.3
+openpyxl==3.1.2
+requests==2.32.5

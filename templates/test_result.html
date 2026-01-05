@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>学习任务单系统</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        /* 题干内容自适应 */
+        .question-content {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            max-width: 100%;
+        }
+        /* 题干中的图片自适应 */
+        .question-content img {
+            max-width: 100%;
+            height: auto;
+            display: block;
+            margin: 10px 0;
+        }
+        /* 答案内容样式 */
+        .answer-content {
+            display: inline-block;
+            max-width: 100%;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            white-space: pre-wrap;
+        }
+        /* 上下居中答案标签 */
+        .answer-label {
+            display: inline-flex;
+            align-items: center;
+            margin-right: 8px;
+        }
+        /* 答案中的图片自适应 */
+        .answer-content img {
+            max-width: 100%;
+            height: auto;
+            display: inline-block;
+            vertical-align: middle;
+            margin: 5px 5px 5px 0;
+        }
+        /* 确保卡片内容不溢出 */
+        .card-body {
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body class="container mt-5">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="#">学习任务单系统</a>
+            <div class="navbar-text text-light">
+                {% if is_teacher %}
+                查看学生答题详情 | 学生：{{ result.student_name }} | 班级：{{ result.class_number }}
+                {% else %}
+                学生：{{ student.name }} | 班级：{{ student.class_number }}
+                {% endif %}
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="text-center">{{ test.title }}</h3>
+            </div>
+            <div class="card-body">
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-body">
+                                <h5 class="card-title">测试成绩</h5>
+                                <p class="card-text">得分：{{ result.score }} / {{ test.total_score }}</p>
+                                <p class="card-text">提交时间：{{ result.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-body">
+                                <h5 class="card-title">历史成绩</h5>
+                                {% if history %}
+                                <p class="card-text">参加测试次数：{{ history.test_count }}</p>
+                                <p class="card-text">平均分：{{ "%.2f"|format(history.average_score) }}</p>
+                                <p class="card-text">最高分：{{ history.highest_score }}</p>
+                                <p class="card-text">最低分：{{ history.lowest_score }}</p>
+                                {% else %}
+                                <p class="card-text text-muted">暂无历史记录</p>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+        </div>
+
+                <h4 class="mb-3">答题详情</h4>
+                {% for question in questions %}
+                <div class="card mb-3">
+            <div class="card-header">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span>第{{ loop.index }}题</span>
+                            {% if question.question_type == 'short_answer' %}
+                            <span class="badge {% if question.score is not none %}bg-success{% else %}bg-danger{% endif %}">
+                                {% if question.score is not none %}已评分{% else %}待评分{% endif %}
+                            </span>
+                            {% elif question.question_type == 'fill_blank' %}
+                            <span class="badge {% if question.is_correct %}bg-success{% elif question.score > 0 %}bg-warning{% else %}bg-danger{% endif %}">
+                                得分：{{ question.score }}分
+                            </span>
+                            {% else %}
+                            <span class="badge {% if question.is_correct %}bg-success{% else %}bg-danger{% endif %}">
+                                {% if question.is_correct %}对{% else %}错{% endif %}
+                            </span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="fw-bold question-content">{{ question.content|replace('\n', '<br>')|safe }}</div>
+                        
+                        {% if question.question_type == 'single_choice' %}
+                        <div class="mb-3">
+                            <div><strong class="answer-label">你的答案：</strong><div class="answer-content">{{ question.student_answer|safe }}</div></div>
+                            <div class="mt-2"><strong>正确答案：</strong>{{ question.correct_answer }}</div>
+                            <div class="options mt-2">
+                                <p>A. {{ question.option_a }}</p>
+                                <p>B. {{ question.option_b }}</p>
+                                <p>C. {{ question.option_c }}</p>
+                                <p>D. {{ question.option_d }}</p>
+                            </div>
+                        </div>
+                        {% elif question.question_type == 'multiple_choice' %}
+                        <div class="mb-3">
+                            <div><strong>你的答案：</strong><div class="answer-content">{{ question.student_answer.replace(',', '')|safe }}</div></div>
+                            <div class="mt-2"><strong>正确答案：</strong>{{ question.correct_answer.replace(',', '') }}</div>
+                            <div class="options mt-2">
+                                <p>A. {{ question.option_a }}</p>
+                                <p>B. {{ question.option_b }}</p>
+                                <p>C. {{ question.option_c }}</p>
+                                <p>D. {{ question.option_d }}</p>
+                            </div>
+                        </div>
+                        {% elif question.question_type == 'true_false' %}
+                        <div class="mb-3">
+                            <div><strong>你的答案：</strong><div class="answer-content">{{ question.student_answer|safe }}</div></div>
+                            <div class="mt-2"><strong>正确答案：</strong>{{ question.correct_answer }}</div>
+                        </div>
+                        {% elif question.question_type == 'fill_blank' %}
+                        <div class="mb-3">
+                            <div><strong>你的答案：</strong><div class="answer-content">{{ question.student_answer|safe }}</div></div>
+                            <div class="mt-2"><strong>正确答案：</strong>{{ question.correct_answer[:-1] if question.correct_answer.endswith('、') else question.correct_answer }}</div>
+                            <div class="mt-2">
+                                <strong>得分：</strong>
+                                <span class="{% if question.is_correct %}text-success{% elif question.score > 0 %}text-warning{% else %}text-danger{% endif %}">
+                                    {{ question.score }}分
+                                </span>
+                                {% if question.is_correct %}
+                                <span class="badge bg-success ms-2">全对</span>
+                                {% elif question.score > 0 %}
+                                <span class="badge bg-warning ms-2">部分正确</span>
+                                {% if question.grading_method == 'ai' and question.comment and question.comment.startswith('扣分理由：') %}
+                                <small class="text-muted ms-1">（{{ question.comment.split('。')[0].replace('扣分理由：', '') }}）</small>
+                                {% endif %}
+                                {% else %}
+                                <span class="badge bg-danger ms-2">全错</span>
+                                {% if question.grading_method == 'ai' and question.comment and question.comment.startswith('扣分理由：') %}
+                                <small class="text-muted ms-1">（{{ question.comment.split('。')[0].replace('扣分理由：', '') }}）</small>
+                                {% endif %}
+                                {% endif %}
+                                {% if question.grading_method == 'ai' %}
+                                <span class="badge bg-info ms-2">AI批改</span>
+                                {% elif question.grading_method == 'manual' %}
+                                <span class="badge bg-secondary ms-2">人工批改</span>
+                                {% endif %}
+                                {% if question.manual_reviewed %}
+                                <span class="badge bg-success ms-1">已复核</span>
+                                {% endif %}
+                            </div>
+                            
+                            {% if question.comment %}
+                            <div class="mt-2">
+                                <strong>{% if question.grading_method == 'ai' %}AI评语{% else %}评语{% endif %}：</strong>
+                                <div class="alert alert-light mt-1">{{ question.comment|safe }}</div>
+                            </div>
+                            {% endif %}
+                            
+                            {% if is_teacher %}
+                            <div class="mt-3">
+                                <!-- 删除AI原始评分及评语内容显示 -->
+                                
+                                <form method="post" action="{{ url_for('grade_fill_blank', question_id=question.id, result_id=result.id) }}" class="d-inline">
+                                    <div class="mb-2">
+                                        <label for="score-{{ question.id }}" class="form-label">
+                                            {% if question.grading_method == 'ai' %}人工复核评分{% else %}评分{% endif %}
+                                            （0-{{ test.fill_blank_score }}分）：
+                                        </label>
+                                        <input type="number" class="form-control" id="score-{{ question.id }}" name="score" min="0" max="{{ test.fill_blank_score }}" value="{{ question.score if question.score is not none else 0 }}" required>
+                                    </div>
+                                    <div class="mb-2">
+                                        <label for="comment-{{ question.id }}" class="form-label">
+                                            {% if question.grading_method == 'ai' %}复核评语{% else %}评语{% endif %}（可选）：
+                                        </label>
+                                        <textarea class="form-control" id="comment-{{ question.id }}" name="comment" rows="2">{% if question.grading_method == 'ai' %}{% else %}{{ question.comment if question.comment is not none else '' }}{% endif %}</textarea>
+                                    </div>
+                                    <button type="submit" class="btn btn-primary">
+                                        {% if question.grading_method == 'ai' %}提交复核{% else %}提交评分{% endif %}
+                                    </button>
+                                </form>
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% elif question.question_type == 'short_answer' %}
+                        <div class="mb-3">
+                            <div><strong>你的答案：</strong><div class="answer-content">{{ question.student_answer|safe }}</div></div>
+                            <div class="mt-2"><strong>参考答案：</strong><div class="answer-content">{{ question.correct_answer|safe }}</div></div>
+                            <div class="mt-2">
+                                <strong>得分：</strong>{{ question.score if question.score is not none else '未评分' }}
+                                {% if question.grading_method == 'ai' %}
+                                <span class="badge bg-info ms-2">AI批改</span>
+                                {% elif question.grading_method == 'manual' %}
+                                <span class="badge bg-secondary ms-2">人工批改</span>
+                                {% endif %}
+                                {% if question.manual_reviewed %}
+                                <span class="badge bg-success ms-1">已复核</span>
+                                {% endif %}
+                            </div>
+                            
+                            {% if question.comment %}
+                            <div class="mt-2">
+                                <strong>{% if question.grading_method == 'ai' %}AI评语{% else %}评语{% endif %}：</strong>
+                                <div class="alert alert-light mt-1">{{ question.comment|safe }}</div>
+                            </div>
+                            {% endif %}
+                            
+                            {% if is_teacher %}
+                            <div class="mt-3">
+                                <!-- 删除AI原始评分及评语内容显示 -->
+                                
+                                <form action="{{ url_for('grade_short_answer_by_result') }}" method="POST">
+                                    <input type="hidden" name="result_id" value="{{ result.id }}">
+                                    <input type="hidden" name="question_id" value="{{ question.id }}">
+                                    <div class="mb-2">
+                                        <div class="d-flex align-items-center">
+                                            <label for="score-{{ question.id }}" class="form-label me-2 mb-0">
+                                                {% if question.grading_method == 'ai' %}人工复核评分{% else %}评分{% endif %}
+                                                （0-{{ test.short_answer_score }}分）：
+                                            </label>
+                                            <input type="number" class="form-control w-25" id="score-{{ question.id }}" name="score" min="0" max="{{ test.short_answer_score }}" value="{{ question.score if question.score is not none else 0 }}" required>
+                                        </div>
+                                    </div>
+                                    <div class="mb-2">
+                                        <label for="comment-{{ question.id }}" class="form-label">
+                                            {% if question.grading_method == 'ai' %}复核评语{% else %}评语{% endif %}（可选）：
+                                        </label>
+                                        <textarea class="form-control" id="comment-{{ question.id }}" name="comment" rows="2">{% if question.grading_method == 'ai' %}{% else %}{{ question.comment if question.comment is not none else '' }}{% endif %}</textarea>
+                                    </div>
+                                    <button type="submit" class="btn btn-primary">
+                                        {% if question.grading_method == 'ai' %}提交复核{% else %}提交评分{% endif %}
+                                    </button>
+                                </form>
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+
+                    {% if question.explanation %}
+                        <div class="alert alert-info">
+                            <strong>解析：</strong>{{ question.explanation }}
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+
+                <div class="text-center mt-4">
+                    {% if is_teacher %}
+                    <a href="{{ url_for('get_test_statistics', test_id=test_id) }}" class="btn btn-primary">返回统计页面</a>
+                    {% else %}
+                    <a href="{{ url_for('student_dashboard') }}" class="btn btn-primary">返回首页</a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // 处理评语显示
+        document.addEventListener('DOMContentLoaded', function() {
+            // 获取所有评语元素
+            const commentElements = document.querySelectorAll('.alert.alert-light');
+            
+            commentElements.forEach(commentElement => {
+                let commentText = commentElement.innerHTML;
+                
+                // 1. 移除"AI评语："前缀
+                commentText = commentText.replace(/AI评语：/g, '');
+                
+                // 2. 统一替换中文句号
+                commentText = commentText.replace(/\./g, '。');
+                
+                // 3. 按关键词分段，添加标题样式，内容不换行
+                commentText = commentText
+                    .replace(/主要得分点：/g, '<h6 class="mb-1">主要得分点：</h6>')
+                    .replace(/扣分点：/g, '<h6 class="mb-1 mt-2">扣分点：</h6>')
+                    .replace(/改进建议：/g, '<h6 class="mb-1 mt-2">改进建议：</h6>')
+                    .replace(/拓展知识：/g, '<h6 class="mb-1 mt-2">拓展知识：</h6>');
+                
+                // 4. 移除不必要的换行和空格，保持内容紧凑
+                commentText = commentText.replace(/\n/g, '')
+                    .replace(/\s+/g, ' ')
+                    .replace(/\s*<br>\s*/g, ' ');
+                
+                commentElement.innerHTML = commentText;
+            });
+        });
+    </script>
+</body>
+</html> 
