@@ -22,7 +22,7 @@
         }
         /* 答案内容样式 */
         .answer-content {
-            display: inline-block;
+            display: inline;
             max-width: 100%;
             word-wrap: break-word;
             overflow-wrap: break-word;
@@ -122,7 +122,7 @@
                         {% if question.question_type == 'single_choice' %}
                         <div class="mb-3">
                             <div><strong class="answer-label">你的答案：</strong><div class="answer-content">{{ question.student_answer|safe }}</div></div>
-                            <div class="mt-2"><strong>正确答案：</strong>{{ question.correct_answer }}</div>
+                            <div class="mt-2"><strong class="answer-label">正确答案：</strong>{{ question.correct_answer }}</div>
                             <div class="options mt-2">
                                 <p>A. {{ question.option_a }}</p>
                                 <p>B. {{ question.option_b }}</p>
@@ -132,8 +132,8 @@
                         </div>
                         {% elif question.question_type == 'multiple_choice' %}
                         <div class="mb-3">
-                            <div><strong>你的答案：</strong><div class="answer-content">{{ question.student_answer.replace(',', '')|safe }}</div></div>
-                            <div class="mt-2"><strong>正确答案：</strong>{{ question.correct_answer.replace(',', '') }}</div>
+                            <div><strong class="answer-label">你的答案：</strong><div class="answer-content">{{ question.student_answer.replace(',', '')|safe }}</div></div>
+                            <div class="mt-2"><strong class="answer-label">正确答案：</strong>{{ question.correct_answer.replace(',', '') }}</div>
                             <div class="options mt-2">
                                 <p>A. {{ question.option_a }}</p>
                                 <p>B. {{ question.option_b }}</p>
@@ -143,13 +143,13 @@
                         </div>
                         {% elif question.question_type == 'true_false' %}
                         <div class="mb-3">
-                            <div><strong>你的答案：</strong><div class="answer-content">{{ question.student_answer|safe }}</div></div>
-                            <div class="mt-2"><strong>正确答案：</strong>{{ question.correct_answer }}</div>
+                            <div><strong class="answer-label">你的答案：</strong><div class="answer-content">{{ question.student_answer|safe }}</div></div>
+                            <div class="mt-2"><strong class="answer-label">正确答案：</strong>{{ question.correct_answer }}</div>
                         </div>
                         {% elif question.question_type == 'fill_blank' %}
                         <div class="mb-3">
-                            <div><strong>你的答案：</strong><div class="answer-content">{{ question.student_answer|safe }}</div></div>
-                            <div class="mt-2"><strong>正确答案：</strong>{{ question.correct_answer[:-1] if question.correct_answer.endswith('、') else question.correct_answer }}</div>
+                            <div><strong class="answer-label">你的答案：</strong><div class="answer-content">{{ question.student_answer|safe }}</div></div>
+                            <div class="mt-2"><strong class="answer-label">正确答案：</strong>{{ question.correct_answer[:-1] if question.correct_answer.endswith('、') else question.correct_answer }}</div>
                             <div class="mt-2">
                                 <strong>得分：</strong>
                                 <span class="{% if question.is_correct %}text-success{% elif question.score > 0 %}text-warning{% else %}text-danger{% endif %}">
@@ -212,8 +212,8 @@
                         </div>
                         {% elif question.question_type == 'short_answer' %}
                         <div class="mb-3">
-                            <div><strong>你的答案：</strong><div class="answer-content">{{ question.student_answer|safe }}</div></div>
-                            <div class="mt-2"><strong>参考答案：</strong><div class="answer-content">{{ question.correct_answer|safe }}</div></div>
+                            <div><strong class="answer-label">你的答案：</strong><div class="answer-content">{{ question.student_answer|safe }}</div></div>
+                            <div class="mt-2"><strong class="answer-label">参考答案：</strong><div class="answer-content">{{ question.correct_answer|safe }}</div></div>
                             <div class="mt-2">
                                 <strong>得分：</strong>{{ question.score if question.score is not none else '未评分' }}
                                 {% if question.grading_method == 'ai' %}
@@ -294,23 +294,28 @@
             commentElements.forEach(commentElement => {
                 let commentText = commentElement.innerHTML;
                 
-                // 1. 移除"AI评语："前缀
+                // 1. 移除代码块标记和JSON标记
+                commentText = commentText.replace(/```json/g, '');
+                commentText = commentText.replace(/```/g, '');
+                
+                // 2. 移除"AI评语："前缀
                 commentText = commentText.replace(/AI评语：/g, '');
                 
-                // 2. 统一替换中文句号
+                // 3. 统一替换中文句号
                 commentText = commentText.replace(/\./g, '。');
                 
-                // 3. 按关键词分段，添加标题样式，内容不换行
+                // 4. 按关键词分段，添加标题样式，内容不换行
                 commentText = commentText
                     .replace(/主要得分点：/g, '<h6 class="mb-1">主要得分点：</h6>')
                     .replace(/扣分点：/g, '<h6 class="mb-1 mt-2">扣分点：</h6>')
                     .replace(/改进建议：/g, '<h6 class="mb-1 mt-2">改进建议：</h6>')
                     .replace(/拓展知识：/g, '<h6 class="mb-1 mt-2">拓展知识：</h6>');
                 
-                // 4. 移除不必要的换行和空格，保持内容紧凑
+                // 5. 移除不必要的换行和空格，保持内容紧凑
                 commentText = commentText.replace(/\n/g, '')
                     .replace(/\s+/g, ' ')
-                    .replace(/\s*<br>\s*/g, ' ');
+                    .replace(/\s*<br>\s*/g, ' ')
+                    .trim();
                 
                 commentElement.innerHTML = commentText;
             });

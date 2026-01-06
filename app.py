@@ -348,6 +348,9 @@ def student_start():
             flash('姓名和班级号不能为空')
             return render_template('student_start.html')
         
+        # 标准化班级号：去除"班"字和前后空格，统一格式
+        class_number = class_number.strip().replace('班', '').strip()
+        
         # 在创建学生账户前，先检查是否有可用的测试
         if test_content:
             # 学生选择了预设
@@ -415,6 +418,9 @@ def student_history_login():
     if not name or not class_number:
         flash('姓名和班级号不能为空')
         return redirect(url_for('index'))
+    
+    # 标准化班级号：去除"班"字和前后空格，统一格式
+    class_number = class_number.strip().replace('班', '').strip()
     
     # 生成学生用户名
     username = f"{name}_{class_number}"
@@ -712,9 +718,9 @@ def submit_test():
         preset = TestPreset.query.get(selected_preset_id)
         if preset:
             try:
-                # 创建一个临时的测试记录用于关联
-                temp_test = Test(
-                    title=f"预设测试: {preset.title}",
+                # 尝试查找是否已存在相同配置的测试记录
+                existing_test = Test.query.filter_by(
+                    title=preset.title,
                     single_choice_count=preset.single_choice_count or 0,
                     multiple_choice_count=preset.multiple_choice_count or 0,
                     true_false_count=preset.true_false_count or 0,
@@ -725,21 +731,47 @@ def submit_test():
                     true_false_score=preset.true_false_score or 0,
                     fill_blank_score=preset.fill_blank_score or 0,
                     short_answer_score=preset.short_answer_score or 0,
-                    total_score=((preset.single_choice_count or 0) * (preset.single_choice_score or 0) +
-                               (preset.multiple_choice_count or 0) * (preset.multiple_choice_score or 0) +
-                               (preset.true_false_count or 0) * (preset.true_false_score or 0) +
-                               (preset.fill_blank_count or 0) * (preset.fill_blank_score or 0) +
-                               (preset.short_answer_count or 0) * (preset.short_answer_score or 0)),
                     single_choice_bank_id=preset.single_choice_bank_id,
                     multiple_choice_bank_id=preset.multiple_choice_bank_id,
                     true_false_bank_id=preset.true_false_bank_id,
                     fill_blank_bank_id=preset.fill_blank_bank_id,
                     short_answer_bank_id=preset.short_answer_bank_id,
-                    is_active=False  # 标记为非活跃，避免影响正常测试
-                )
-                db.session.add(temp_test)
-                db.session.flush()  # 获取ID但不提交
-                test_id = temp_test.id
+                    is_active=False
+                ).first()
+                
+                if existing_test:
+                    # 如果存在相同配置的测试记录，直接复用
+                    temp_test = existing_test
+                    test_id = temp_test.id
+                else:
+                    # 如果不存在，创建新的测试记录
+                    temp_test = Test(
+                        title=preset.title,
+                        single_choice_count=preset.single_choice_count or 0,
+                        multiple_choice_count=preset.multiple_choice_count or 0,
+                        true_false_count=preset.true_false_count or 0,
+                        fill_blank_count=preset.fill_blank_count or 0,
+                        short_answer_count=preset.short_answer_count or 0,
+                        single_choice_score=preset.single_choice_score or 0,
+                        multiple_choice_score=preset.multiple_choice_score or 0,
+                        true_false_score=preset.true_false_score or 0,
+                        fill_blank_score=preset.fill_blank_score or 0,
+                        short_answer_score=preset.short_answer_score or 0,
+                        total_score=((preset.single_choice_count or 0) * (preset.single_choice_score or 0) +
+                                   (preset.multiple_choice_count or 0) * (preset.multiple_choice_score or 0) +
+                                   (preset.true_false_count or 0) * (preset.true_false_score or 0) +
+                                   (preset.fill_blank_count or 0) * (preset.fill_blank_score or 0) +
+                                   (preset.short_answer_count or 0) * (preset.short_answer_score or 0)),
+                        single_choice_bank_id=preset.single_choice_bank_id,
+                        multiple_choice_bank_id=preset.multiple_choice_bank_id,
+                        true_false_bank_id=preset.true_false_bank_id,
+                        fill_blank_bank_id=preset.fill_blank_bank_id,
+                        short_answer_bank_id=preset.short_answer_bank_id,
+                        is_active=False  # 标记为非活跃，避免影响正常测试
+                    )
+                    db.session.add(temp_test)
+                    db.session.flush()  # 获取ID但不提交
+                    test_id = temp_test.id
             except Exception as e:
                 # 如果创建临时测试失败，记录错误并重定向
                 print(f"创建临时测试失败: {e}")

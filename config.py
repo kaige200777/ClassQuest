@@ -5,7 +5,7 @@ import os
 
 # 服务器配置
 HOST = os.environ.get('APP_HOST', '0.0.0.0')
-PORT = int(os.environ.get('APP_PORT', 8000))
+PORT = int(os.environ.get('APP_PORT', 8080))
 
 # 数据库配置
 DATABASE_URI = os.environ.get('DATABASE_URI', 'sqlite:///test_system.db')
