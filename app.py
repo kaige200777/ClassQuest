@@ -1699,7 +1699,7 @@ def import_questions(question_type):
             explanation_possibilities = ['解析', '答案解析', '说明']
         elif question_type == 'short_answer':
             content_possibilities = ['题目', '题干', '题目内容']
-            answer_possibilities = ['参考答案', '正确答案', '答案']
+            answer_possibilities = ['答题要求', '参考答案', '正确答案', '答案']
             score_possibilities = ['分值', '分数']
             explanation_possibilities = ['解析', '答案解析', '说明']
         

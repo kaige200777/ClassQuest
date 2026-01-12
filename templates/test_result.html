@@ -213,7 +213,7 @@
                         {% elif question.question_type == 'short_answer' %}
                         <div class="mb-3">
                             <div><strong class="answer-label">你的答案：</strong><div class="answer-content">{{ question.student_answer|safe }}</div></div>
-                            <div class="mt-2"><strong class="answer-label">参考答案：</strong><div class="answer-content">{{ question.correct_answer|safe }}</div></div>
+                            <div class="mt-2"><strong class="answer-label">答题要求：</strong><div class="answer-content">{{ question.correct_answer|safe }}</div></div>
                             <div class="mt-2">
                                 <strong>得分：</strong>{{ question.score if question.score is not none else '未评分' }}
                                 {% if question.grading_method == 'ai' %}
