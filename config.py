@@ -2,7 +2,7 @@
 应用配置文件
 """
 import os
-
+ 
 # 服务器配置
 HOST = os.environ.get('APP_HOST', '0.0.0.0')
 PORT = int(os.environ.get('APP_PORT', 8080))
