@@ -348,6 +348,17 @@ def student_start():
             flash('姓名和班级号不能为空')
             return render_template('student_start.html')
         
+        # 验证姓名：只能是2-4个汉字
+        import re
+        if not re.match(r'^[\u4e00-\u9fa5]{2,4}$', name):
+            flash('姓名只能是2-4个汉字')
+            return render_template('student_start.html')
+        
+        # 验证班级号：只能是3位阿拉伯数字
+        if not re.match(r'^\d{3}$', class_number):
+            flash('班级号只能是3位阿拉伯数字')
+            return render_template('student_start.html')
+        
         # 标准化班级号：去除"班"字和前后空格，统一格式
         class_number = class_number.strip().replace('班', '').strip()
         
@@ -393,7 +404,9 @@ def check_student_history():
     name = data.get('name')
     class_number = data.get('class_number')
     
-    if not name or not class_number:
+    # 验证姓名：只能是2-4个汉字
+    import re
+    if not name or not class_number or not re.match(r'^[\u4e00-\u9fa5]{2,4}$', name) or not re.match(r'^\d{3}$', class_number):
         return jsonify({'has_history': False})
     
     # 生成学生用户名
@@ -417,6 +430,17 @@ def student_history_login():
     
     if not name or not class_number:
         flash('姓名和班级号不能为空')
+        return redirect(url_for('index'))
+    
+    # 验证姓名：只能是2-4个汉字
+    import re
+    if not re.match(r'^[\u4e00-\u9fa5]{2,4}$', name):
+        flash('姓名只能是2-4个汉字')
+        return redirect(url_for('index'))
+    
+    # 验证班级号：只能是3位阿拉伯数字
+    if not re.match(r'^\d{3}$', class_number):
+        flash('班级号只能是3位阿拉伯数字')
         return redirect(url_for('index'))
     
     # 标准化班级号：去除"班"字和前后空格，统一格式
