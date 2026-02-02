@@ -37,7 +37,7 @@
         }
         html += `<td><input class='form-control' name='correct_answer' value='${q.correct_answer||''}'></td>`;
         html += `<td><input class='form-control' name='score' type='number' value='${q.score||''}'></td>`;
-        html += `<td><input class='form-control' name='explanation' value='${q.explanation||''}'></td>`;
+        html += `<td><textarea class='form-control allow-img-paste' name='explanation' rows='2'>${q.explanation||''}</textarea></td>`;
         html += '</tr>';
       });
       html += '</tbody></table></div>';

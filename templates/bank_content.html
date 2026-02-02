@@ -166,6 +166,10 @@
                             <label for="score" class="form-label">分值</label>
                             <input type="number" class="form-control" id="score" name="score" required min="1" value="1">
                         </div>
+                        <div class="mb-3">
+                            <label for="explanation" class="form-label">题目解析</label>
+                            <textarea class="form-control allow-img-paste" id="explanation" name="explanation" rows="3" placeholder="可粘贴图片"></textarea>
+                        </div>
                     </form>
                 </div>
                 <div class="modal-footer">
@@ -219,6 +223,11 @@
                     });
                 } else {
                     document.getElementById('correct_answer').value = data.correct_answer;
+                }
+                
+                // 添加解析字段
+                if (data.explanation) {
+                    document.getElementById('explanation').value = data.explanation;
                 }
                 
                 questionModal.show();
@@ -279,4 +288,4 @@
         }
     </script>
 </body>
-</html> 
+</html>

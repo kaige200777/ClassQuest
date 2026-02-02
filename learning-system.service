@@ -1,0 +1,29 @@
+[Unit]
+Description=学习任务单系统
+After=network.target
+
+[Service]
+Type=notify
+User=www-data
+Group=www-data
+WorkingDirectory=/path/to/your/project
+ExecStart=/path/to/your/venv/bin/gunicorn \
+    --workers 4 \
+    --threads 8 \
+    --worker-class sync \
+    --worker-connections 1000 \
+    --max-requests 1000 \
+    --max-requests-jitter 50 \
+    --timeout 30 \
+    --bind 0.0.0.0:8000 \
+    app:app
+ExecReload=/bin/kill -s $MAINPID
+KillMode=mixed
+TimeoutSec=5
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+
+[Install]
+WantedBy=multi-user.target
