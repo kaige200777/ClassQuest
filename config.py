@@ -8,7 +8,9 @@ HOST = os.environ.get('APP_HOST', '0.0.0.0')
 PORT = int(os.environ.get('APP_PORT', '8080'))
 
 # Waitress服务器配置（生产环境）
-WAITRESS_THREADS = int(os.environ.get('WAITRESS_THREADS', '8'))
+WAITRESS_THREADS = int(os.environ.get('WAITRESS_THREADS', '32'))
+WAITRESS_CONNECTION_LIMIT = int(os.environ.get('WAITRESS_CONNECTION_LIMIT', '1000'))
+WAITRESS_SEND_BYTES = int(os.environ.get('WAITRESS_SEND_BYTES', '65536'))
 
 # 日志配置
 LOG_DIR = os.environ.get('LOG_DIR', 'logs')

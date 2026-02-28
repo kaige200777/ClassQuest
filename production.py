@@ -37,6 +37,8 @@ if __name__ == '__main__':
         host=config.HOST,
         port=config.PORT,
         threads=config.WAITRESS_THREADS,
+        connection_limit=config.WAITRESS_CONNECTION_LIMIT,
+        send_bytes=config.WAITRESS_SEND_BYTES,
         url_scheme='http',
         url_prefix=''
     )

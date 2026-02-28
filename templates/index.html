@@ -25,7 +25,7 @@
                             {% endfor %}
                         {% endif %}
                     {% endwith %}
-                    <form method="post" action="/student/start" class="mb-3">
+                    <form method="post" action="/student/start" class="mb-3" id="studentForm">
                         <div class="mb-3">
                             <label for="name" class="form-label">姓名</label>
                             <input type="text" class="form-control" id="name" name="name" required>
@@ -41,7 +41,7 @@
                             </select>
                         </div>
                         <div class="d-flex gap-2">
-                            <button type="submit" class="btn btn-primary flex-grow-1">开始学习</button>
+                            <button type="submit" class="btn btn-primary flex-grow-1" id="startBtn">开始学习</button>
                             <button type="button" class="btn btn-secondary" id="historyBtn" disabled>历史记录</button>
                         </div>
                     </form>
@@ -165,7 +165,14 @@
                     form.submit();
                 }
             });
-        }
+    }
+    
+    // 防止表单重复提交
+    document.getElementById('studentForm').addEventListener('submit', function(e) {
+        const startBtn = document.getElementById('startBtn');
+        startBtn.disabled = true;
+        startBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 处理中...';
+    });
     </script>
     
     <script src="{{ url_for('static', filename='bootstrap/js/bootstrap.bundle.min.js') }}"></script>

@@ -27,7 +27,7 @@
                         {% endif %}
                     {% endwith %}
                     
-                    <form method="post">
+                    <form method="post" id="loginForm">
                         <div class="mb-3">
                             <label for="username" class="form-label">用户名</label>
                             <input type="text" class="form-control" id="username" name="username" value="{{ request.form.username }}">
@@ -36,7 +36,7 @@
                             <label for="password" class="form-label">密码</label>
                             <input type="password" class="form-control" id="password" name="password">
                         </div>
-                        <button type="submit" class="btn btn-primary w-100">登录</button>
+                        <button type="submit" class="btn btn-primary w-100" id="loginBtn">登录</button>
                     </form>
                     <hr>
                     <div class="text-center">
@@ -47,5 +47,12 @@
         </div>
     </div>
     <script src="{{ url_for('static', filename='bootstrap/js/bootstrap.bundle.min.js') }}"></script>
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', function(e) {
+            const loginBtn = document.getElementById('loginBtn');
+            loginBtn.disabled = true;
+            loginBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 登录中...';
+        });
+    </script>
 </body>
 </html> 
