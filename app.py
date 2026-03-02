@@ -55,17 +55,21 @@ def prevent_duplicate_requests(timeout=5):
     """
     def decorator(f):
         def wrapper(*args, **kwargs):
-            request_key = f'last_request_{request.endpoint}'
-            current_time = datetime.utcnow().timestamp()
+            if request.method == 'POST':
+                request_key = f'last_request_{request.endpoint}'
+                current_time = datetime.utcnow().timestamp()
+                
+                if request_key in session:
+                    last_request_time = session[request_key]
+                    if current_time - last_request_time < timeout:
+                        logger.warning(f"检测到重复请求: {request.endpoint}, 间隔: {current_time - last_request_time:.2f}秒")
+                        flash('请求过于频繁，请稍后再试', 'error')
+                        if request.is_json:
+                            return jsonify({'error': '请求过于频繁，请稍后再试'}), 429
+                        return redirect(request.referrer or '/')
+                
+                session[request_key] = current_time
             
-            if request_key in session:
-                last_request_time = session[request_key]
-                if current_time - last_request_time < timeout:
-                    logger.warning(f"检测到重复请求: {request.endpoint}, 间隔: {current_time - last_request_time:.2f}秒")
-                    flash('请求过于频繁，请稍后再试', 'error')
-                    return redirect(request.url)
-            
-            session[request_key] = current_time
             return f(*args, **kwargs)
         wrapper.__name__ = f.__name__
         return wrapper
