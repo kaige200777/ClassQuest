@@ -33,7 +33,7 @@
                 <td>{{ test.count }}</td>
                 <td class="d-flex">
                     <a href="{{ url_for('get_test_statistics', test_id=test.test.id) }}" class="btn btn-sm btn-primary me-2">查看统计</a>
-                    <form method="post" action="{{ url_for('delete_test', test_id=test.test.id) }}" onsubmit="return confirm('确定删除此测试及其成绩吗？');">
+                    <form method="post" action="{{ url_for('delete_test', test_id=test.test.id) }}" onsubmit="return confirm('确定删除此测试及其成绩吗？\n\n注意：这将删除所有相同标题的测试记录。');">
                         <button type="submit" class="btn btn-sm btn-danger">删除</button>
                     </form>
                 </td>

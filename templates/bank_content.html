@@ -54,7 +54,7 @@
                     <tbody>
                         {% for question in questions %}
                         <tr>
-                            <td>{{ loop.index }}</td>
+                            <td>{{ loop.index }}<br><small class="text-muted">ID:{{ question.id }}</small></td>
                             <td>{{ question.content|replace('\n', '<br>')|safe }}</td>
                             {% if bank.question_type in ['single_choice', 'multiple_choice'] %}
                             <td>

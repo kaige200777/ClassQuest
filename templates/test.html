@@ -228,13 +228,13 @@
                     {% if short_answer_questions %}
                     <div class="card mb-4">
                         <div class="card-header bg-danger text-white">
-                            <h5 class="mb-0">简答题（每题{{ test.short_answer_score }}分）</h5>
+                            <h5 class="mb-0">简答题</h5>
                         </div>
                         <div class="card-body">
                             {% for question in short_answer_questions %}
                             <div class="card mb-3">
                                 <div class="card-header">
-                                    第{{ loop.index }}题
+                                    题目ID: {{ question.id }}（{{ question.custom_score if question.custom_score else question.score }}分）
                                 </div>
                                 <div class="card-body">
                                     <div class="fw-bold question-content">{{ question.content|replace('\n', '<br>')|safe }}</div>

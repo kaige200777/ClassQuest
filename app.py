@@ -138,12 +138,18 @@ class Test(db.Model):
     fill_blank_bank_id = db.Column(db.Integer)
     short_answer_bank_id = db.Column(db.Integer)
     
+    # 新增：简答题指定题号（JSON格式存储，如 [{"id": 1, "score": 20}, {"id": 3, "score": 15}]）
+    short_answer_questions = db.Column(db.Text)
+    
     # 新增：是否允许学生自选测试内容
     allow_student_choice = db.Column(db.Boolean, default=False)
     
     # AI批改配置
     short_answer_grading_method = db.Column(db.String(20), default='manual')  # 'manual' 或 'ai'
     fill_blank_grading_method = db.Column(db.String(20), default='manual')  # 'manual' 或 'ai'
+    
+    # 新增：关联预设ID（用于学生自选测试内容）
+    preset_id = db.Column(db.Integer, db.ForeignKey('test_preset.id'))
 
 class TestResult(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -191,6 +197,9 @@ class TestPreset(db.Model):
     true_false_bank_id = db.Column(db.Integer)
     fill_blank_bank_id = db.Column(db.Integer)
     short_answer_bank_id = db.Column(db.Integer)
+    
+    # 新增：简答题指定题号（JSON格式存储）
+    short_answer_questions = db.Column(db.Text)
     
     # 新增：是否允许学生自选测试内容
     allow_student_choice = db.Column(db.Boolean, default=False)
@@ -516,6 +525,14 @@ def test():
             flash('选择的测试内容不存在')
             return redirect(url_for('student_start'))
         
+        # 获取简答题指定题号配置
+        short_answer_questions_config = None
+        if preset.short_answer_questions:
+            try:
+                short_answer_questions_config = json.loads(preset.short_answer_questions)
+            except:
+                short_answer_questions_config = None
+        
         # 使用预设配置创建临时测试对象
         test_config = {
             'title': preset.title,
@@ -534,11 +551,12 @@ def test():
             'true_false_bank_id': preset.true_false_bank_id,
             'fill_blank_bank_id': preset.fill_blank_bank_id,
             'short_answer_bank_id': preset.short_answer_bank_id,
+            'short_answer_questions': short_answer_questions_config,
             'total_score': ((preset.single_choice_count or 0) * (preset.single_choice_score or 0) +
                           (preset.multiple_choice_count or 0) * (preset.multiple_choice_score or 0) +
                           (preset.true_false_count or 0) * (preset.true_false_score or 0) +
                           (preset.fill_blank_count or 0) * (preset.fill_blank_score or 0) +
-                          (preset.short_answer_count or 0) * (preset.short_answer_score or 0))
+                          (preset.short_answer_score or 0))
         }
     else:
         # 学生没有选择，使用当前激活的测试
@@ -550,6 +568,14 @@ def test():
         if not current_test:
             flash('当前没有可用的测试，请联系管理员')
             return redirect(url_for('student_start'))
+        
+        # 获取简答题指定题号配置
+        short_answer_questions_config = None
+        if current_test.short_answer_questions:
+            try:
+                short_answer_questions_config = json.loads(current_test.short_answer_questions)
+            except:
+                short_answer_questions_config = None
         
         # 确保所有必要的字段都有默认值
         test_config = {
@@ -569,13 +595,29 @@ def test():
             'true_false_bank_id': current_test.true_false_bank_id,
             'fill_blank_bank_id': current_test.fill_blank_bank_id,
             'short_answer_bank_id': current_test.short_answer_bank_id,
+            'short_answer_questions': short_answer_questions_config,
             'total_score': current_test.total_score or 0
         }
     
     # 每次都重新抽题，不再判断是否已参加过
-    def pick_questions(q_type, count, bank_id):
+    def pick_questions(q_type, count, bank_id, specific_ids=None):
+        # 如果有指定题号，优先使用指定题号获取题目
+        if specific_ids and len(specific_ids) > 0:
+            questions = []
+            for item in specific_ids:
+                q_id = item['id']
+                q = Question.query.filter_by(id=q_id, question_type=q_type).first()
+                if q:
+                    # 将分值信息附加到题目对象上
+                    q.custom_score = item['score']
+                    questions.append(q)
+            return questions
+        
+        # 如果没有指定题号，则检查count是否大于0
         if count <= 0:
             return []
+        
+        # 随机抽题（旧方式）
         q = Question.query.filter_by(question_type=q_type)
         if bank_id:
             q = q.filter_by(bank_id=bank_id)
@@ -585,7 +627,8 @@ def test():
     multiple_choice_questions = pick_questions('multiple_choice', test_config['multiple_choice_count'], test_config['multiple_choice_bank_id'])
     true_false_questions      = pick_questions('true_false',   test_config['true_false_count'],     test_config['true_false_bank_id'])
     fill_blank_questions      = pick_questions('fill_blank',   test_config['fill_blank_count'],     test_config['fill_blank_bank_id'])
-    short_answer_questions    = pick_questions('short_answer', test_config['short_answer_count'],   test_config['short_answer_bank_id'])
+    # 简答题使用指定题号
+    short_answer_questions    = pick_questions('short_answer', test_config['short_answer_count'],   test_config['short_answer_bank_id'], test_config['short_answer_questions'])
     
     return render_template('test.html', 
                          test=test_config,
@@ -772,29 +815,14 @@ def submit_test():
         preset = TestPreset.query.get(selected_preset_id)
         if preset:
             try:
-                # 尝试查找是否已存在相同配置的测试记录
+                # 尝试查找是否已存在相同预设ID的测试记录
                 existing_test = Test.query.filter_by(
-                    title=preset.title,
-                    single_choice_count=preset.single_choice_count or 0,
-                    multiple_choice_count=preset.multiple_choice_count or 0,
-                    true_false_count=preset.true_false_count or 0,
-                    fill_blank_count=preset.fill_blank_count or 0,
-                    short_answer_count=preset.short_answer_count or 0,
-                    single_choice_score=preset.single_choice_score or 0,
-                    multiple_choice_score=preset.multiple_choice_score or 0,
-                    true_false_score=preset.true_false_score or 0,
-                    fill_blank_score=preset.fill_blank_score or 0,
-                    short_answer_score=preset.short_answer_score or 0,
-                    single_choice_bank_id=preset.single_choice_bank_id,
-                    multiple_choice_bank_id=preset.multiple_choice_bank_id,
-                    true_false_bank_id=preset.true_false_bank_id,
-                    fill_blank_bank_id=preset.fill_blank_bank_id,
-                    short_answer_bank_id=preset.short_answer_bank_id,
+                    preset_id=selected_preset_id,
                     is_active=False
                 ).first()
                 
                 if existing_test:
-                    # 如果存在相同配置的测试记录，直接复用
+                    # 如果存在相同预设ID的测试记录，直接复用
                     temp_test = existing_test
                     test_id = temp_test.id
                 else:
@@ -821,7 +849,8 @@ def submit_test():
                         true_false_bank_id=preset.true_false_bank_id,
                         fill_blank_bank_id=preset.fill_blank_bank_id,
                         short_answer_bank_id=preset.short_answer_bank_id,
-                        is_active=False  # 标记为非活跃，避免影响正常测试
+                        is_active=False,  # 标记为非活跃，避免影响正常测试
+                        preset_id=selected_preset_id  # 关联预设ID
                     )
                     db.session.add(temp_test)
                     db.session.flush()  # 获取ID但不提交
@@ -881,10 +910,13 @@ def submit_test():
             
             if question and should_ai_grade:
                 try:
-                    # 获取题目分值（严格按照教师面板设置）
+                    # 获取题目分值（优先使用自定义分数，否则使用配置中的分数）
                     question_score = 0
                     if question.question_type == 'short_answer':
-                        if isinstance(test_config, dict):
+                        # 优先使用题目对象上的自定义分数
+                        if hasattr(question, 'custom_score') and question.custom_score:
+                            question_score = question.custom_score
+                        elif isinstance(test_config, dict):
                             question_score = test_config.get('short_answer_score', 0)
                         else:
                             question_score = test_config.short_answer_score or 0
@@ -1115,20 +1147,49 @@ def student_dashboard():
 def test_statistics():
     if 'role' not in session or session['role'] != 'teacher':
         return redirect(url_for('teacher_login'))
+    
     # 获取所有考试及人次
     tests = Test.query.order_by(Test.created_at.desc()).all()
-    data = []
+    
+    # 统一按标题合并测试
+    merged_tests = {}
+    
     for t in tests:
+        key = t.title
+        
+        if key not in merged_tests:
+            merged_tests[key] = {
+                'test': t,
+                'count': 0,
+                'test_ids': []
+            }
+        merged_tests[key]['test_ids'].append(t.id)
         cnt = TestResult.query.filter_by(test_id=t.id).count()
-        data.append({'test': t, 'count': cnt})
+        merged_tests[key]['count'] += cnt
+    
+    # 转换为列表并按创建时间排序
+    data = list(merged_tests.values())
+    data.sort(key=lambda x: x['test'].created_at, reverse=True)
+    
     return render_template('test_statistics.html', tests=data) 
 
 @app.route('/test_statistics/<int:test_id>')
 def get_test_statistics(test_id):
     if 'role' not in session or session['role'] != 'teacher':
         return redirect(url_for('teacher_login'))
-    # 获取指定考试的所有成绩
-    results = TestResult.query.filter_by(test_id=test_id).order_by(TestResult.class_number, TestResult.student_name, TestResult.created_at).all()
+    
+    # 获取测试信息
+    test = Test.query.get(test_id)
+    if not test:
+        flash('测试不存在', 'error')
+        return redirect(url_for('test_statistics'))
+    
+    # 获取所有相同标题的测试ID
+    test_ids = [t.id for t in Test.query.filter_by(title=test.title).all()]
+    
+    # 获取所有相关测试结果
+    results = TestResult.query.filter(TestResult.test_id.in_(test_ids)).order_by(TestResult.class_number, TestResult.student_name, TestResult.created_at).all()
+    
     # 按班级分组统计
     class_stats = {}
     class_students = {}
@@ -1239,19 +1300,29 @@ def delete_test(test_id):
         return redirect(url_for('teacher_login'))
     
     try:
-        # 删除测试相关的所有数据
-        # 1. 删除简答题提交记录
-        for result in TestResult.query.filter_by(test_id=test_id).all():
-            ShortAnswerSubmission.query.filter_by(result_id=result.id).delete()
-            FillBlankSubmission.query.filter_by(result_id=result.id).delete()
-        
-        # 2. 删除测试结果
-        TestResult.query.filter_by(test_id=test_id).delete()
-        
-        # 3. 删除测试配置
         test = Test.query.get(test_id)
-        if test:
-            db.session.delete(test)
+        if not test:
+            flash('测试不存在', 'error')
+            return redirect(url_for('test_statistics'))
+        
+        # 获取所有相同标题的测试ID
+        same_title_tests = Test.query.filter_by(title=test.title).all()
+        test_ids_to_delete = [t.id for t in same_title_tests]
+        
+        # 删除测试相关的所有数据
+        for tid in test_ids_to_delete:
+            # 1. 删除简答题提交记录
+            for result in TestResult.query.filter_by(test_id=tid).all():
+                ShortAnswerSubmission.query.filter_by(result_id=result.id).delete()
+                FillBlankSubmission.query.filter_by(result_id=result.id).delete()
+            
+            # 2. 删除测试结果
+            TestResult.query.filter_by(test_id=tid).delete()
+            
+            # 3. 删除测试配置
+            test_to_delete = Test.query.get(tid)
+            if test_to_delete:
+                db.session.delete(test_to_delete)
         
         db.session.commit()
         # flash('测试及其所有成绩已删除', 'success')  # 移除成功提示
@@ -2341,13 +2412,46 @@ def save_test_settings():
         multiple_choice_count = int(request.form.get('multiple_choice_count', 0))
         true_false_count = int(request.form.get('true_false_count', 0))
         fill_blank_count = int(request.form.get('fill_blank_count', 0))
-        short_answer_count = int(request.form.get('short_answer_count', 0))
         
+        # 处理简答题：新方式 - 获取题号和分值数组
+        short_answer_ids = request.form.getlist('short_answer_ids')
+        short_answer_scores = request.form.getlist('short_answer_scores')
+        
+        # 调试日志
+        import sys
+        print('表单数据 - 简答题ID:', short_answer_ids, file=sys.stderr)
+        print('表单数据 - 简答题分值:', short_answer_scores, file=sys.stderr)
+        
+        # 构建简答题配置（过滤空值）
+        short_answer_questions = []
+        for i in range(len(short_answer_ids)):
+            q_id = short_answer_ids[i].strip()
+            q_score = short_answer_scores[i].strip() if i < len(short_answer_scores) else ''
+            if q_id and q_score:
+                try:
+                    short_answer_questions.append({
+                        'id': int(q_id),
+                        'score': int(q_score)
+                    })
+                except ValueError:
+                    pass
+        
+        # 简答题数量为配置的题目数量
+        short_answer_count = len(short_answer_questions)
+        # 将简答题配置转换为 JSON 字符串
+        short_answer_questions_json = json.dumps(short_answer_questions) if short_answer_questions else None
+        
+        # 调试日志
+        print('构建的简答题配置:', short_answer_questions, file=sys.stderr)
+        print('保存的JSON:', short_answer_questions_json, file=sys.stderr)
+        
+        # 其他题型的分值
         single_choice_score = int(request.form.get('single_choice_score', 0))
         multiple_choice_score = int(request.form.get('multiple_choice_score', 0))
         true_false_score = int(request.form.get('true_false_score', 0))
         fill_blank_score = int(request.form.get('fill_blank_score', 0))
-        short_answer_score = int(request.form.get('short_answer_score', 0))
+        # 简答题使用配置中各题的总分（后端不再使用统一分值）
+        short_answer_score = sum(q['score'] for q in short_answer_questions) if short_answer_questions else 0
         
         single_choice_bank_id = request.form.get('single_choice_bank')
         multiple_choice_bank_id = request.form.get('multiple_choice_bank')
@@ -2368,6 +2472,7 @@ def save_test_settings():
             fill_blank_grading_method = 'manual'
         
         # 如果选择了AI批改但AI服务不可用，强制使用人工批改
+        warnings = []
         ai_service = get_ai_grading_service()
         if short_answer_grading_method == 'ai' and not ai_service.is_enabled():
             short_answer_grading_method = 'manual'
@@ -2437,16 +2542,21 @@ def save_test_settings():
                 if available < fill_blank_count:
                     validation_errors.append(f'填空题：题库中只有 {available} 道题，需要 {fill_blank_count} 道')
         
+        # 验证简答题题号是否存在于题库中
         if short_answer_count > 0:
             if not short_answer_bank_id:
                 validation_errors.append('简答题：未选择题库')
             else:
-                available = Question.query.filter_by(
-                    question_type='short_answer',
-                    bank_id=int(short_answer_bank_id)
-                ).count()
-                if available < short_answer_count:
-                    validation_errors.append(f'简答题：题库中只有 {available} 道题，需要 {short_answer_count} 道')
+                # 验证每个题号是否存在于题库中
+                bank_id = int(short_answer_bank_id)
+                for q in short_answer_questions:
+                    exists = Question.query.filter_by(
+                        id=q['id'],
+                        question_type='short_answer',
+                        bank_id=bank_id
+                    ).first()
+                    if not exists:
+                        validation_errors.append(f'简答题：题号 {q["id"]} 不存在于所选题库中')
         
         if validation_errors:
             return jsonify({
@@ -2456,7 +2566,6 @@ def save_test_settings():
             }), 400
         
         # 检查分数设置警告
-        warnings = []
         if single_choice_count > 0 and single_choice_score == 0:
             warnings.append('单选题：题目数量大于0，但每题分数为0')
         if multiple_choice_count > 0 and multiple_choice_score == 0:
@@ -2466,7 +2575,7 @@ def save_test_settings():
         if fill_blank_count > 0 and fill_blank_score == 0:
             warnings.append('填空题：题目数量大于0，但每题分数为0')
         if short_answer_count > 0 and short_answer_score == 0:
-            warnings.append('简答题：题目数量大于0，但每题分数为0')
+            warnings.append('简答题：题目数量大于0，但总分分数为0')
         
         # 自动计算总分
         total_score = (
@@ -2474,7 +2583,7 @@ def save_test_settings():
             multiple_choice_count * multiple_choice_score +
             true_false_count * true_false_score +
             fill_blank_count * fill_blank_score +
-            short_answer_count * short_answer_score
+            short_answer_score
         )
         
         # 总是保存为预设（使用测试标题作为预设名）
@@ -2498,6 +2607,7 @@ def save_test_settings():
             preset.true_false_bank_id = int(true_false_bank_id) if true_false_bank_id else None
             preset.fill_blank_bank_id = int(fill_blank_bank_id) if fill_blank_bank_id else None
             preset.short_answer_bank_id = int(short_answer_bank_id) if short_answer_bank_id else None
+            preset.short_answer_questions = short_answer_questions_json
             preset.allow_student_choice = allow_student_choice
             preset.short_answer_grading_method = short_answer_grading_method
             preset.fill_blank_grading_method = fill_blank_grading_method
@@ -2521,6 +2631,7 @@ def save_test_settings():
                 true_false_bank_id=int(true_false_bank_id) if true_false_bank_id else None,
                 fill_blank_bank_id=int(fill_blank_bank_id) if fill_blank_bank_id else None,
                 short_answer_bank_id=int(short_answer_bank_id) if short_answer_bank_id else None,
+                short_answer_questions=short_answer_questions_json,
                 allow_student_choice=allow_student_choice,
                 short_answer_grading_method=short_answer_grading_method,
                 fill_blank_grading_method=fill_blank_grading_method
@@ -2542,7 +2653,6 @@ def save_test_settings():
         
         if test_to_update:
             # 已经确认人次为0，直接更新测试记录
-                # 测试人数为0，直接更新现有测试
             test_to_update.single_choice_count = single_choice_count
             test_to_update.multiple_choice_count = multiple_choice_count
             test_to_update.true_false_count = true_false_count
@@ -2559,12 +2669,13 @@ def save_test_settings():
             test_to_update.true_false_bank_id = int(true_false_bank_id) if true_false_bank_id else None
             test_to_update.fill_blank_bank_id = int(fill_blank_bank_id) if fill_blank_bank_id else None
             test_to_update.short_answer_bank_id = int(short_answer_bank_id) if short_answer_bank_id else None
+            test_to_update.short_answer_questions = short_answer_questions_json
             test_to_update.allow_student_choice = allow_student_choice
             test_to_update.short_answer_grading_method = short_answer_grading_method
             test_to_update.fill_blank_grading_method = fill_blank_grading_method
             test_to_update.is_active = True
                 
-                # 将其他测试设为非活跃
+            # 将其他测试设为非活跃
             Test.query.filter(Test.id != test_to_update.id).update({'is_active': False})
         else:
             # 不存在相同标题的测试，创建新测试
@@ -2590,6 +2701,7 @@ def save_test_settings():
                 true_false_bank_id=int(true_false_bank_id) if true_false_bank_id else None,
                 fill_blank_bank_id=int(fill_blank_bank_id) if fill_blank_bank_id else None,
                 short_answer_bank_id=int(short_answer_bank_id) if short_answer_bank_id else None,
+                short_answer_questions=short_answer_questions_json,
                 allow_student_choice=allow_student_choice,
                 short_answer_grading_method=short_answer_grading_method,
                 fill_blank_grading_method=fill_blank_grading_method,
@@ -2651,6 +2763,14 @@ def get_test_preset(preset_id):
         return jsonify({'success': False, 'message': '未授权'}), 403
     
     preset = TestPreset.query.get_or_404(preset_id)
+    
+    # 调试日志
+    import sys
+    print('预设数据:', file=sys.stderr)
+    print('ID:', preset.id, file=sys.stderr)
+    print('Title:', preset.title, file=sys.stderr)
+    print('Short Answer Questions:', preset.short_answer_questions, file=sys.stderr)
+    
     return jsonify({
         'success': True,
         'preset': {
@@ -2671,6 +2791,7 @@ def get_test_preset(preset_id):
             'true_false_bank_id': preset.true_false_bank_id,
             'fill_blank_bank_id': preset.fill_blank_bank_id,
             'short_answer_bank_id': preset.short_answer_bank_id,
+            'short_answer_questions': preset.short_answer_questions,
             'allow_student_choice': preset.allow_student_choice,
             'short_answer_grading_method': preset.short_answer_grading_method or 'manual',
             'fill_blank_grading_method': preset.fill_blank_grading_method or 'manual'

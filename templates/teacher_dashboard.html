@@ -179,16 +179,30 @@
                                 <div class="col-md-2">
                                     <label class="form-label mb-0">简答题</label>
                                 </div>
-                                <div class="col-md-2">
-                                    <input type="number" class="form-control form-control-sm" name="short_answer_count" value="{{ last_test.short_answer_count if last_test else 0 }}" min="0" placeholder="数量" style="width: 80px;">
-                                </div>
-                                <div class="col-md-2">
-                                    <input type="number" class="form-control form-control-sm" name="short_answer_score" value="{{ last_test.short_answer_score if last_test else 0 }}" min="0" placeholder="分值" style="width: 80px;">
-                                </div>
-                                <div class="col-md-6">
+                                <div class="col-md-10">
                                     <select class="form-select" name="short_answer_bank" data-selected="{{ last_test.short_answer_bank_id if last_test else '' }}">
                                         <option value="">选择题库</option>
                                     </select>
+                                </div>
+                            </div>
+                            <div class="row align-items-center mt-2">
+                                <div class="col-md-2"></div>
+                                <div class="col-md-10">
+                                    <div id="short_answer_items">
+                                        <div class="row align-items-center mb-2" id="short_answer_item_0">
+                                            <div class="col-md-4">
+                                                <input type="number" class="form-control form-control-sm" name="short_answer_ids" min="1" placeholder="题目ID" style="width: 100%;">
+                                            </div>
+                                            <div class="col-md-4">
+                                                <input type="number" class="form-control form-control-sm" name="short_answer_scores" min="0" placeholder="分值" style="width: 100%;">
+                                            </div>
+                                            <div class="col-md-4">
+                                                <button type="button" class="btn btn-sm btn-outline-primary add-short-answer-item" onclick="addShortAnswerItem()">
+                                                    <i class="bi bi-plus"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -330,6 +344,13 @@
                             <button type="button" id="importBtn" class="btn btn-primary w-100">导入题库</button>
                         </form>
                         </div>
+                        
+                        <!-- 保存成功提示区域 -->
+                        <div id="saveSuccessAlert" class="mt-3 p-3 border border-danger rounded" style="display: none;">
+                            <div class="text-success text-center">
+                                <i class="bi bi-check-circle"></i> 保存预设成功
+                            </div>
+                        </div>
                 </div>
             </div>
         </div>
@@ -454,6 +475,7 @@
                     if(selVal){select.value = selVal;}
                 }
             });
+            updateShortAnswerAddButtonState();
         }
         // 绑定下拉变化限制题量
         document.querySelectorAll('select[name$="_bank"]').forEach(sel=>{
@@ -465,6 +487,10 @@
                 if(cntInput){
                     if(max){cntInput.max=max;} else {cntInput.removeAttribute('max');}
                     if(max && parseInt(cntInput.value)>max){cntInput.value=max;}
+                }
+                
+                if (type === 'short_answer') {
+                    updateShortAnswerAddButtonState();
                 }
             };
         });
@@ -520,7 +546,6 @@
                 .then(r => r.json())
                 .then(data => {
                     if (data.success) {
-                        alert('✅ ' + data.message);
                         loadBankList();
                     } else {
                         alert('❌ ' + data.message);
@@ -532,15 +557,88 @@
             }
         }
 
+        // 简答题题号管理
+        let shortAnswerItemIndex = 0;
+        
+        function getShortAnswerBankQuestionCount() {
+            const shortAnswerBankSelect = document.querySelector('select[name="short_answer_bank"]');
+            if (shortAnswerBankSelect && shortAnswerBankSelect.selectedIndex > 0) {
+                const selectedOption = shortAnswerBankSelect.options[shortAnswerBankSelect.selectedIndex];
+                return parseInt(selectedOption.dataset.count) || 0;
+            }
+            return 0;
+        }
+        
+        function getCurrentShortAnswerItemCount() {
+            return document.querySelectorAll('#short_answer_items .row').length;
+        }
+        
+        function updateShortAnswerAddButtonState() {
+            const addButtons = document.querySelectorAll('.add-short-answer-item');
+            const bankCount = getShortAnswerBankQuestionCount();
+            const currentCount = getCurrentShortAnswerItemCount();
+            
+            addButtons.forEach(btn => {
+                if (bankCount > 0 && currentCount >= bankCount) {
+                    btn.disabled = true;
+                    btn.style.opacity = '0.4';
+                } else {
+                    btn.disabled = false;
+                    btn.style.opacity = '1';
+                }
+            });
+        }
+        
+        function addShortAnswerItem() {
+            shortAnswerItemIndex++;
+            const container = document.getElementById('short_answer_items');
+            const newItem = document.createElement('div');
+            newItem.className = 'row align-items-center mb-2';
+            newItem.id = `short_answer_item_${shortAnswerItemIndex}`;
+            newItem.innerHTML = `
+                <div class="col-md-4">
+                    <input type="number" class="form-control form-control-sm" name="short_answer_ids" min="1" placeholder="题目ID" style="width: 100%;">
+                </div>
+                <div class="col-md-4">
+                    <input type="number" class="form-control form-control-sm" name="short_answer_scores" min="0" placeholder="分值" style="width: 100%;">
+                </div>
+                <div class="col-md-4">
+                    <button type="button" class="btn btn-sm btn-outline-primary add-short-answer-item" onclick="addShortAnswerItem()">
+                        <i class="bi bi-plus"></i>
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-danger ms-1 remove-short-answer-item" onclick="removeShortAnswerItem(${shortAnswerItemIndex})">
+                        <i class="bi bi-minus"></i>
+                    </button>
+                </div>
+            `;
+            container.appendChild(newItem);
+            updateShortAnswerAddButtonState();
+        }
+        
+        function removeShortAnswerItem(index) {
+            const item = document.getElementById(`short_answer_item_${index}`);
+            if (item) {
+                item.remove();
+                updateShortAnswerAddButtonState();
+            }
+        }
+        
         // 计算总分
         function calculateTotalScore() {
-            const types = ['single_choice', 'multiple_choice', 'true_false', 'fill_blank', 'short_answer'];
+            const types = ['single_choice', 'multiple_choice', 'true_false', 'fill_blank'];
             let total = 0;
             
+            // 计算其他题型的分数
             types.forEach(type => {
                 const count = parseInt(document.querySelector(`input[name="${type}_count"]`).value) || 0;
                 const score = parseInt(document.querySelector(`input[name="${type}_score"]`).value) || 0;
                 total += count * score;
+            });
+            
+            // 计算简答题的分数（新方式：多个题号和分值输入框）
+            const shortAnswerScores = document.querySelectorAll('input[name="short_answer_scores"]');
+            shortAnswerScores.forEach(input => {
+                total += parseInt(input.value) || 0;
             });
 
             document.getElementById('total_score').value = total;
@@ -549,6 +647,13 @@
         // 监听所有题目数量和分值的输入变化
         document.querySelectorAll('input[name$="_count"], input[name$="_score"]').forEach(input => {
             input.addEventListener('input', calculateTotalScore);
+        });
+        
+        // 监听简答题分数输入变化
+        document.addEventListener('input', function(e) {
+            if (e.target.name === 'short_answer_scores') {
+                calculateTotalScore();
+            }
         });
 
         // 初始化数据确认
@@ -631,7 +736,7 @@
 
         // 预设功能
         function loadPresets(){
-            fetch('/api/test_presets').then(r=>r.json()).then(data=>{
+            return fetch('/api/test_presets').then(r=>r.json()).then(data=>{
                 const sel=document.getElementById('presetSelect');
                 sel.innerHTML='';
                 
@@ -657,19 +762,93 @@
             document.getElementById('deletePresetBtn').disabled=!id;
             if(!id){document.getElementById('preset_id').value='';return;}
             fetch(`/api/test_presets/${id}`).then(r=>r.json()).then(response=>{
+                console.log('预设数据:', response);
                 if(!response.success || !response.preset) return;
                 const data = response.preset;
+                console.log('简答题配置:', data.short_answer_questions);
                 document.getElementById('preset_id').value=data.id;
                 document.getElementById('test_title').value=data.title;
                 const fields=[
                     'single_choice','multiple_choice','true_false','fill_blank','short_answer'
                 ];
                 fields.forEach(ft=>{
-                    document.querySelector(`input[name="${ft}_count"]`).value=data[`${ft}_count`];
-                    document.querySelector(`input[name="${ft}_score"]`).value=data[`${ft}_score`];
+                    // 简答题不再使用统一的数量和分值输入框，跳过
+                    if (ft !== 'short_answer') {
+                        document.querySelector(`input[name="${ft}_count"]`).value=data[`${ft}_count`];
+                        document.querySelector(`input[name="${ft}_score"]`).value=data[`${ft}_score`];
+                    }
                     const sel=document.querySelector(`select[name="${ft}_bank"]`);
                     if(sel){sel.value=data[`${ft}_bank_id`] || '';} 
                 });
+                
+                // 加载简答题的ID和分值配置
+                const shortAnswerItemsContainer = document.getElementById('short_answer_items');
+                shortAnswerItemsContainer.innerHTML = '';
+                shortAnswerItemIndex = 0;
+                
+                let hasShortAnswerConfig = false;
+                if (data.short_answer_questions) {
+                    try {
+                        const shortAnswerQuestions = JSON.parse(data.short_answer_questions);
+                        if (shortAnswerQuestions && shortAnswerQuestions.length > 0) {
+                            hasShortAnswerConfig = true;
+                            shortAnswerQuestions.forEach((item, index) => {
+                                const newItem = document.createElement('div');
+                                newItem.className = 'row align-items-center mb-2';
+                                newItem.id = `short_answer_item_${index}`;
+                                newItem.innerHTML = `
+                                    <div class="col-md-4">
+                                        <input type="number" class="form-control form-control-sm" name="short_answer_ids" min="1" placeholder="题目ID" style="width: 100%;" value="${item.id}">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <input type="number" class="form-control form-control-sm" name="short_answer_scores" min="0" placeholder="分值" style="width: 100%;" value="${item.score}">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <button type="button" class="btn btn-sm btn-outline-primary add-short-answer-item" onclick="addShortAnswerItem()">
+                                            <i class="bi bi-plus"></i>
+                                        </button>
+                                        ${index > 0 ? `<button type="button" class="btn btn-sm btn-outline-danger ms-1 remove-short-answer-item" onclick="removeShortAnswerItem(${index})">
+                                            <i class="bi bi-minus"></i>
+                                        </button>` : ''}
+                                    </div>
+                                `;
+                                shortAnswerItemsContainer.appendChild(newItem);
+                            });
+                            // 设置 shortAnswerItemIndex 为最后一个元素的索引
+                            shortAnswerItemIndex = shortAnswerQuestions.length - 1;
+                        }
+                    } catch (e) {
+                        console.error('解析简答题配置失败:', e);
+                    }
+                }
+                
+                // 如果没有配置或者配置为空数组，添加一个空的输入框
+                if (!hasShortAnswerConfig) {
+                    const newItem = document.createElement('div');
+                    newItem.className = 'row align-items-center mb-2';
+                    newItem.id = 'short_answer_item_0';
+                    newItem.innerHTML = `
+                        <div class="col-md-4">
+                            <input type="number" class="form-control form-control-sm" name="short_answer_ids" min="1" placeholder="题目ID" style="width: 100%;">
+                        </div>
+                        <div class="col-md-4">
+                            <input type="number" class="form-control form-control-sm" name="short_answer_scores" min="0" placeholder="分值" style="width: 100%;">
+                        </div>
+                        <div class="col-md-4">
+                            <button type="button" class="btn btn-sm btn-outline-primary add-short-answer-item" onclick="addShortAnswerItem()">
+                                <i class="bi bi-plus"></i>
+                            </button>
+                        </div>
+                    `;
+                    shortAnswerItemsContainer.appendChild(newItem);
+                }
+                
+                // 更新简答题加法按钮状态
+                updateShortAnswerAddButtonState();
+                
+                // 重新计算总分
+                calculateTotalScore();
+                
                 // 设置允许学生自选测试内容选项
                 document.getElementById('allow_student_choice').checked = data.allow_student_choice || false;
                 
@@ -813,17 +992,41 @@
             
             // 验证题库选择
             for(const t of types){
-                const cnt=parseInt(document.querySelector(`input[name="${t}_count"]`).value)||0;
-                const sel=document.querySelector(`select[name="${t}_bank"]`);
-                if(cnt>0 && sel && !sel.value){
-                    alert('请为含题量的题型选择题库！');
-                    sel.focus();
-                    return false;
+                if (t === 'short_answer') {
+                    // 简答题使用指定题号方式，验证方式不同
+                    const sel = document.querySelector(`select[name="${t}_bank"]`);
+                    const items = document.querySelectorAll('input[name="short_answer_ids"]');
+                    let hasShortAnswerItems = false;
+                    items.forEach(item => {
+                        if (item.value.trim()) {
+                            hasShortAnswerItems = true;
+                        }
+                    });
+                    if (hasShortAnswerItems && sel && !sel.value) {
+                        alert('请为简答题选择题库！');
+                        sel.focus();
+                        return false;
+                    }
+                } else {
+                    const cnt=parseInt(document.querySelector(`input[name="${t}_count"]`)?.value)||0;
+                    const sel=document.querySelector(`select[name="${t}_bank"]`);
+                    if(cnt>0 && sel && !sel.value){
+                        alert('请为含题量的题型选择题库！');
+                        sel.focus();
+                        return false;
+                    }
                 }
             }
             
             // 使用 AJAX 提交表单
             const formData = new FormData(this);
+            
+            // 调试：检查表单数据
+            console.log('表单数据:');
+            formData.forEach((value, key) => {
+                console.log(`${key}: ${value}`);
+            });
+            
             const submitBtn = this.querySelector('button[type="submit"]');
             
             // 禁用提交按钮
@@ -847,9 +1050,30 @@
                         successMsg += '\n\n建议：请检查分数设置，确保每个题型的分数大于0';
                     }
                     
-                    alert(successMsg);
                     // 总是刷新预设列表，因为每次保存都会创建预设
-                    loadPresets();
+                    loadPresets().then(() => {
+                        // 获取当前测试标题
+                        const testTitle = document.getElementById('test_title').value;
+                        // 更新预设下拉列表选中项为当前测试标题
+                        const presetSelect = document.getElementById('presetSelect');
+                        for (let i = 0; i < presetSelect.options.length; i++) {
+                            if (presetSelect.options[i].text === testTitle) {
+                                presetSelect.value = presetSelect.options[i].value;
+                                // 更新删除按钮状态
+                                document.getElementById('deletePresetBtn').disabled = false;
+                                break;
+                            }
+                        }
+                        
+                        // 显示保存成功提示
+                        const successAlert = document.getElementById('saveSuccessAlert');
+                        successAlert.style.display = 'block';
+                        
+                        // 3秒后隐藏提示
+                        setTimeout(() => {
+                            successAlert.style.display = 'none';
+                        }, 3000);
+                    });
                 } else {
                     let errorMsg = '❌ ' + data.message;
                     if (data.errors && data.errors.length > 0) {
