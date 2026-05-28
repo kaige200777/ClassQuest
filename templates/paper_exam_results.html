@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>试卷模式成绩管理</title>
+    <link href="{{ url_for('static', filename='bootstrap/css/bootstrap.min.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='bootstrap-icons/font/bootstrap-icons.css') }}" rel="stylesheet">
+    <style>
+        .navbar-dark .navbar-nav .nav-link { color: #fff !important; background: #343a40 !important; margin-right: 10px; border-radius: 4px; padding: 6px 16px; transition: background 0.2s; font-weight: 500; }
+        .navbar-dark .navbar-nav .nav-link:hover, .navbar-dark .navbar-nav .nav-link.active { background: #0d6efd !important; color: #fff !important; }
+        .result-row { cursor: pointer; }
+        .result-row:hover { background: #f0f8ff; }
+        .score-cell { font-weight: bold; font-size: 1.1em; }
+        .needs-review-badge { animation: pulse 2s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+        .grading-panel { max-height: 70vh; overflow-y: auto; }
+    </style>
+</head>
+<body class="container mt-4">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="#"><i class="bi bi-file-earmark-text"></i> 试卷模式成绩管理</a>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item"><a class="nav-link" href="{{ url_for('teacher_dashboard') }}"><i class="bi bi-arrow-left"></i> 返回面板</a></li>
+                    <li class="nav-item"><a class="nav-link" href="{{ url_for('test_statistics') }}"><i class="bi bi-graph-up"></i> 题库统计</a></li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="row mt-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header">
+                    <div class="row align-items-center">
+                        <div class="col-md-6"><h4>试卷成绩列表</h4></div>
+                        <div class="col-md-6">
+                            <select class="form-select" id="presetSelect" onchange="switchPreset(this.value)">
+                                <option value="">选择试卷测试</option>
+                                {% for p in presets %}
+                                <option value="{{ p.id }}" {% if p.id == selected_preset_id %}selected{% endif %}>{{ p.title }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    {% if results %}
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>学号</th>
+                                <th>姓名</th>
+                                <th>班级</th>
+                                <th>得分</th>
+                                <th>满分</th>
+                                <th>提交时间</th>
+                                <th>用时</th>
+                                <th>状态</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for r in results %}
+                            <tr class="result-row">
+                                <td>{{ r.class_number }}</td>
+                                <td>{{ r.student_name }}</td>
+                                <td>{{ r.class_number }}</td>
+                                <td class="score-cell">{{ r.total_score }}</td>
+                                <td>{{ r.total_possible }}</td>
+                                <td>{{ r.submitted_at }}</td>
+                                <td>{{ (r.duration_used // 60) if r.duration_used else 0 }}分{{ (r.duration_used % 60) if r.duration_used else 0 }}秒</td>
+                                <td>
+                                    {% if r.needs_review %}
+                                    <span class="badge bg-warning needs-review-badge">需复核</span>
+                                    {% else %}
+                                    <span class="badge bg-success">已批改</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-primary" onclick="viewDetail({{ r.exam_id }})">查看详情</button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    {% else %}
+                    <p class="text-muted text-center">{% if selected_preset_id %}暂无提交记录{% else %}请选择试卷测试{% endif %}</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 详情模态框 -->
+    <div class="modal fade" id="detailModal" tabindex="-1">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">作答详情 - <span id="detailStudent"></span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-12">
+                            <div id="detailInfo" class="mb-3"></div>
+                            <div class="grading-panel" id="gradingPanel"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <span id="detailTotal" class="me-auto fw-bold"></span>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='bootstrap/js/bootstrap.bundle.min.js') }}"></script>
+    <script>
+        function switchPreset(presetId) {
+            if (presetId) window.location.href = '?preset_id=' + presetId;
+        }
+
+        async function viewDetail(examId) {
+            try {
+                const resp = await fetch('/api/paper_exam/' + examId + '/detail');
+                const data = await resp.json();
+                if (!data.success) { alert('加载失败'); return; }
+
+                document.getElementById('detailStudent').textContent = data.exam.student_name;
+                document.getElementById('detailInfo').innerHTML = `<p>班级: ${data.exam.class_number} | 总分: ${data.exam.total_score} | 提交时间: ${data.exam.submitted_at} | 用时: ${data.exam.duration_used ? Math.floor(data.exam.duration_used/60)+'分'+data.exam.duration_used%60+'秒' : ''}</p>`;
+                
+                let html = '';
+                data.answer_config.forEach(q => {
+                    const studentAnswer = data.answers[q.num] || '';
+                    const aiResult = data.ai_results[q.num] || {};
+                    const isShortAnswer = q.type === '简答' || q.type === '简答';
+                    const needsManual = aiResult.success === false;
+                    
+                    html += `<div class="card mb-3 ${needsManual ? 'border-warning' : ''}">`;
+                    html += `<div class="card-header d-flex justify-content-between">`;
+                    html += `<span>第${q.num}题 (${q.type}, ${q.score}分)</span>`;
+                    html += `<span class="badge bg-${needsManual ? 'warning' : (aiResult.score == q.score ? 'success' : 'secondary')}">得分: ${aiResult.score || 0}/${q.score}</span>`;
+                    html += `</div>`;
+                    html += `<div class="card-body">`;
+                    html += `<p><strong>正确答案：</strong>${q.answer || '见参考答案'}</p>`;
+                    html += `<p><strong>学生作答：</strong>${studentAnswer || '<span class="text-muted">未作答</span>'}</p>`;
+                    if (aiResult.feedback) html += `<p><strong>批改反馈：</strong>${aiResult.feedback}</p>`;
+                    
+                    if (isShortAnswer || needsManual) {
+                        html += `<div class="input-group input-group-sm mt-2" style="max-width:300px;">`;
+                        html += `<span class="input-group-text">修改分数</span>`;
+                        html += `<input type="number" class="form-control" id="score_${examId}_${q.num}" value="${aiResult.score || 0}" min="0" max="${q.score}">`;
+                        html += `<span class="input-group-text">/${q.score}</span>`;
+                        html += `<button class="btn btn-outline-primary" onclick="updateScore(${examId}, '${q.num}', parseInt(document.getElementById('score_${examId}_${q.num}').value))">更新</button>`;
+                        html += `</div>`;
+                    }
+                    html += `</div></div>`;
+                });
+                document.getElementById('gradingPanel').innerHTML = html;
+                document.getElementById('detailTotal').textContent = '总分: ' + data.exam.total_score;
+                
+                new bootstrap.Modal(document.getElementById('detailModal')).show();
+            } catch(e) { alert('加载详情失败: ' + e.message); }
+        }
+
+        async function updateScore(examId, questionNum, score) {
+            const feedback = prompt('批改反馈（可选）：', '人工修正');
+            try {
+                const resp = await fetch('/api/paper_exam/' + examId + '/update_score', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({question_num: questionNum, score: score, feedback: feedback || '人工修正'})
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    alert('分数已更新');
+                    viewDetail(examId);
+                }
+            } catch(e) { alert('更新失败: ' + e.message); }
+        }
+    </script>
+</body>
+</html>

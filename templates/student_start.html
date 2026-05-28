@@ -51,65 +51,30 @@
     </div>
 
     <script>
-        // 页面加载时检查是否允许学生自选测试内容
         document.addEventListener('DOMContentLoaded', function() {
-            checkTestSettings();
+            document.getElementById('testContentDiv').style.display = 'block';
+            loadTestPresets();
         });
 
-        function checkTestSettings() {
-            fetch('/api/current_test_settings')
+        function loadTestPresets() {
+            fetch('/api/test_presets_public')
                 .then(response => response.json())
                 .then(data => {
-                    console.log('测试设置:', data);
-                    if (data.allow_student_choice) {
-                        // 允许学生自选，显示下拉框并加载预设列表
-                        console.log('允许学生自选，显示下拉框');
-                        document.getElementById('testContentDiv').style.display = 'block';
-                        loadTestPresets();
-                    } else {
-                        // 不允许学生自选，隐藏下拉框
-                        console.log('不允许学生自选，隐藏下拉框');
-                        document.getElementById('testContentDiv').style.display = 'none';
-                    }
-                })
-                .catch(error => {
-                    console.error('获取测试设置失败:', error);
-                });
-        }
-
-        function loadTestPresets() {
-            console.log('开始加载预设列表...');
-            fetch('/api/test_presets_public')
-                .then(response => {
-                    console.log('响应状态:', response.status);
-                    return response.json();
-                })
-                .then(data => {
-                    console.log('预设列表数据:', data);
-                    console.log('data 的类型:', typeof data);
-                    console.log('data.presets 的类型:', typeof data.presets);
-                    console.log('data.presets 是否为数组:', Array.isArray(data.presets));
-                    
                     const select = document.getElementById('test_content');
                     select.innerHTML = '<option value="">-- 请选择测试内容 --</option>';
                     
                     if (data.presets && Array.isArray(data.presets) && data.presets.length > 0) {
-                        console.log(`找到 ${data.presets.length} 个预设`);
                         data.presets.forEach(preset => {
-                            console.log(`添加预设: ${preset.title} (ID: ${preset.id})`);
                             const option = document.createElement('option');
                             option.value = preset.id;
-                            option.textContent = preset.title;
+                            const modeLabel = preset.test_mode === 'paper' ? ' [📄试卷]' : ' [📝题库]';
+                            option.textContent = preset.title + modeLabel;
                             select.appendChild(option);
                         });
-                    } else {
-                        console.log('没有找到预设或 data.presets 不是数组');
-                        console.log('data.presets 的值:', data.presets);
                     }
                 })
                 .catch(error => {
                     console.error('加载测试预设失败:', error);
-                    console.error('错误堆栈:', error.stack);
                 });
         }
     </script>

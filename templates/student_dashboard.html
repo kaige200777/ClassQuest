@@ -73,7 +73,11 @@
                                 <p>简答题：{{ current_test.short_answer_count }}题（每题{{ current_test.short_answer_score }}分）</p>
                             </div>
                             <div>
+                                {% if current_test.is_paper_mode and current_test.paper_preset_id %}
+                                <a href="{{ url_for('student_paper_test', preset_id=current_test.paper_preset_id) }}" class="btn btn-primary">开始测试</a>
+                                {% else %}
                                 <a href="{{ url_for('test') }}" class="btn btn-primary">开始测试</a>
+                                {% endif %}
                             </div>
                         </div>
                     </div>
@@ -111,7 +115,45 @@
                             </table>
                         </div>
                         {% else %}
-                        <p class="text-center text-muted">暂无测试记录</p>
+                        <p class="text-center text-muted">暂无题库测试记录</p>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="card mt-3">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">试卷考试记录</h5>
+                    </div>
+                    <div class="card-body">
+                        {% if paper_history %}
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>试卷名称</th>
+                                        <th>得分</th>
+                                        <th>用时</th>
+                                        <th>提交时间</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for record in paper_history %}
+                                    <tr>
+                                        <td>{{ record.title }}</td>
+                                        <td>{{ record.total_score }} / {{ record.total_possible }}</td>
+                                        <td>{{ (record.duration_used // 60) }}分{{ (record.duration_used % 60) }}秒</td>
+                                        <td>{{ record.submitted_at }}</td>
+                                        <td>
+                                            <button class="btn btn-sm btn-info" onclick="viewPaperResult({{ record.exam_id }})">查看详情</button>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        {% else %}
+                        <p class="text-center text-muted">暂无试卷考试记录</p>
                         {% endif %}
                     </div>
                 </div>
@@ -120,5 +162,65 @@
     </div>
 
     <script src="{{ url_for('static', filename='bootstrap/js/bootstrap.bundle.min.js') }}"></script>
+    
+    <!-- 试卷详情模态框 -->
+    <div class="modal fade" id="paperResultModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">试卷详情 - <span id="paperResultTitle"></span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="paperResultBody">
+                    <p class="text-center text-muted">加载中...</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function viewPaperResult(examId) {
+            const body = document.getElementById('paperResultBody');
+            body.innerHTML = '<p class="text-center text-muted">加载中...</p>';
+            const modal = new bootstrap.Modal(document.getElementById('paperResultModal'));
+            modal.show();
+            
+            try {
+                const resp = await fetch('/api/paper_exam/' + examId + '/detail');
+                const data = await resp.json();
+                if (!data.success) { body.innerHTML = '<p class="text-danger">加载失败</p>'; return; }
+                
+                const exam = data.exam;
+                document.getElementById('paperResultTitle').textContent = exam.paper_title || '试卷';
+                
+                let html = '<div class="mb-3"><strong>得分：' + exam.total_score + ' 分</strong>';
+                if (exam.submitted_at) html += ' | 提交时间：' + exam.submitted_at;
+                if (exam.duration_used) html += ' | 用时：' + Math.floor(exam.duration_used/60) + '分' + exam.duration_used%60 + '秒';
+                html += '</div><hr>';
+                
+                (data.answer_config || []).forEach(q => {
+                    const studentAnswer = (data.answers || {})[q.num] || '';
+                    const aiResult = (data.ai_results || {})[q.num] || {};
+                    const score = aiResult.score !== undefined ? aiResult.score : 0;
+                    const maxScore = q.score || 0;
+                    
+                    html += '<div class="card mb-2"><div class="card-header d-flex justify-content-between">';
+                    html += '<span>第' + q.num + '题 (' + q.type + ', ' + maxScore + '分)</span>';
+                    html += '<span class="badge bg-' + (score >= maxScore ? 'success' : 'secondary') + '">得分: ' + score + '/' + maxScore + '</span>';
+                    html += '</div><div class="card-body">';
+                    html += '<p><strong>你的作答：</strong>' + (studentAnswer || '<span class="text-muted">未作答</span>') + '</p>';
+                    if (aiResult.feedback) html += '<p><strong>批改反馈：</strong>' + aiResult.feedback + '</p>';
+                    html += '</div></div>';
+                });
+                
+                body.innerHTML = html;
+            } catch(e) {
+                body.innerHTML = '<p class="text-danger">加载失败: ' + e.message + '</p>';
+            }
+        }
+    </script>
 </body>
 </html> 

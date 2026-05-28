@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>试卷预览 - {{ title }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+        .main-container { display: flex; height: calc(100vh - 60px); }
+        .paper-panel { flex: 1; border-right: 1px solid #ddd; overflow: auto; padding: 20px; }
+        .config-panel { flex: 1; overflow: auto; padding: 20px; }
+        .pdf-container { width: 100%; height: 100%; }
+        .pdf-viewer { width: 100%; height: calc(100vh - 120px); }
+        .btn-sm { padding: 4px 8px; font-size: 12px; }
+        .table th, .table td { padding: 6px 8px; font-size: 13px; }
+        .editable-cell { border: 1px solid transparent; padding: 2px 4px; }
+        .editable-cell:hover { border-color: #0d6efd; }
+        .editable-cell:focus { outline: none; border-color: #0d6efd; background: #f0f7ff; }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-dark bg-primary">
+        <div class="container-fluid">
+            <span class="navbar-brand">试卷预览: {{ title }}</span>
+            <div>
+                <button class="btn btn-sm btn-light me-2" onclick="saveConfig()">保存修改</button>
+                <button class="btn btn-sm btn-outline-light" onclick="window.close()">关闭</button>
+            </div>
+        </div>
+    </nav>
+    
+    <div class="main-container">
+        <div class="paper-panel">
+            <h5 class="mb-3">📄 试卷内容</h5>
+            <div class="pdf-container">
+                <embed src="/preview_paper/{{ preview_id }}" type="application/pdf" class="pdf-viewer" />
+            </div>
+        </div>
+        
+        <div class="config-panel">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5>📋 答题卡配置</h5>
+                <button class="btn btn-success btn-sm" onclick="addRow()">+ 添加</button>
+            </div>
+            
+            <table class="table table-bordered table-hover">
+                <thead class="table-light">
+                    <tr>
+                        <th width="50">题号</th>
+                        <th width="70">题型</th>
+                        <th width="80">选项</th>
+                        <th width="50">分值</th>
+                        <th width="120">参考答案</th>
+                        <th width="40">操作</th>
+                    </tr>
+                </thead>
+                <tbody id="configTable">
+                    {% for q in questions %}
+                    <tr>
+                        <td><input type="number" class="form-control form-control-sm" value="{{ q.num }}" onchange="updateField(this, 'num', {{ loop.index0 }})"></td>
+                        <td>
+                            <select class="form-select form-select-sm" onchange="updateField(this, 'type', {{ loop.index0 }})">
+                                <option value="单选" {% if q.type == '单选' %}selected{% endif %}>单选</option>
+                                <option value="多选" {% if q.type == '多选' %}selected{% endif %}>多选</option>
+                                <option value="判断" {% if q.type == '判断' %}selected{% endif %}>判断</option>
+                                <option value="填空" {% if q.type == '填空' %}selected{% endif %}>填空</option>
+                                <option value="简答" {% if q.type == '简答' %}selected{% endif %}>简答</option>
+                            </select>
+                        </td>
+                        <td><input type="text" class="form-control form-control-sm" value="{{ q.options }}" onchange="updateField(this, 'options', {{ loop.index0 }})"></td>
+                        <td><input type="number" class="form-control form-control-sm" value="{{ q.score }}" onchange="updateField(this, 'score', {{ loop.index0 }})"></td>
+                        <td><input type="text" class="form-control form-control-sm" value="{{ q.answer }}" onchange="updateField(this, 'answer', {{ loop.index0 }})"></td>
+                        <td><button class="btn btn-danger btn-sm" onclick="deleteRow({{ loop.index0 }})">删除</button></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    <script>
+        const questions = {{ questions | tojson | safe }};
+        
+        function updateField(element, field, index) {
+            questions[index][field] = element.type === 'number' ? parseInt(element.value) || 0 : element.value;
+        }
+        
+        function addRow() {
+            const newNum = questions.length > 0 ? Math.max(...questions.map(q => q.num)) + 1 : 1;
+            questions.push({
+                num: newNum,
+                type: '单选',
+                options: '',
+                score: 5,
+                answer: ''
+            });
+            renderTable();
+        }
+        
+        function deleteRow(index) {
+            if (confirm('确定要删除这行吗？')) {
+                questions.splice(index, 1);
+                renderTable();
+            }
+        }
+        
+        function renderTable() {
+            const tbody = document.getElementById('configTable');
+            tbody.innerHTML = questions.map((q, i) => `
+                <tr>
+                    <td><input type="number" class="form-control form-control-sm" value="${q.num}" onchange="updateField(this, 'num', ${i})"></td>
+                    <td>
+                        <select class="form-select form-select-sm" onchange="updateField(this, 'type', ${i})">
+                            <option value="单选" ${q.type === '单选' ? 'selected' : ''}>单选</option>
+                            <option value="多选" ${q.type === '多选' ? 'selected' : ''}>多选</option>
+                            <option value="判断" ${q.type === '判断' ? 'selected' : ''}>判断</option>
+                            <option value="填空" ${q.type === '填空' ? 'selected' : ''}>填空</option>
+                            <option value="简答" ${q.type === '简答' ? 'selected' : ''}>简答</option>
+                        </select>
+                    </td>
+                    <td><input type="text" class="form-control form-control-sm" value="${q.options}" onchange="updateField(this, 'options', ${i})"></td>
+                    <td><input type="number" class="form-control form-control-sm" value="${q.score}" onchange="updateField(this, 'score', ${i})"></td>
+                    <td><input type="text" class="form-control form-control-sm" value="${q.answer}" onchange="updateField(this, 'answer', ${i})"></td>
+                    <td><button class="btn btn-danger btn-sm" onclick="deleteRow(${i})">删除</button></td>
+                </tr>
+            `).join('');
+        }
+        
+        async function saveConfig() {
+            const response = await fetch('/paper_preview/{{ preview_id }}/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ questions })
+            });
+            const data = await response.json();
+            alert(data.message);
+        }
+    </script>
+</body>
+</html>

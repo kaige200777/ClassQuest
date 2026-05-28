@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ preset.title }} - 试卷考试</title>
+    <link href="{{ url_for('static', filename='bootstrap/css/bootstrap.min.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='bootstrap-icons/font/bootstrap-icons.css') }}" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { overflow: hidden; height: 100vh; font-family: 'Microsoft YaHei', sans-serif; }
+        .split-container { display: flex; height: calc(100vh - 50px); }
+        .paper-panel { flex: 1; overflow: hidden; position: relative; background: #f5f5f5; border-right: 2px solid #ddd; }
+        .answer-panel { width: 420px; display: flex; flex-direction: column; background: #fff; }
+        .paper-panel canvas { display: block; margin: 0 auto; }
+        .paper-controls { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 6px 12px; background: #e9ecef; border-bottom: 1px solid #ddd; flex-wrap: wrap; }
+        .paper-controls button { padding: 4px 10px; font-size: 13px; }
+        .paper-controls .page-info { font-size: 14px; color: #333; white-space: nowrap; }
+        .pdf-container { overflow: auto; height: calc(100vh - 95px); display: flex; justify-content: center; }
+        .top-bar { display: flex; align-items: center; justify-content: space-between; padding: 6px 16px; background: #2c3e50; color: #fff; height: 50px; flex-wrap: wrap; }
+        .top-bar .title { font-size: 16px; font-weight: bold; }
+        .top-bar .timer { font-size: 18px; font-weight: bold; padding: 2px 12px; border-radius: 4px; background: #34495e; font-variant-numeric: tabular-nums; }
+        .top-bar .timer.warning { background: #e74c3c; animation: blink 1s infinite; }
+        @keyframes blink { 50% { opacity: 0.5; } }
+        .answer-header { padding: 10px 14px; background: #f8f9fa; border-bottom: 1px solid #ddd; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 4px; }
+        .answer-list { flex: 1; overflow-y: auto; padding: 10px 14px; }
+        .answer-item { margin-bottom: 18px; padding-bottom: 12px; border-bottom: 1px solid #eee; }
+        .answer-item.current { background: #e8f4fd; padding: 8px; border-radius: 6px; }
+        .answer-item .q-num { font-weight: bold; color: #2c3e50; margin-bottom: 4px; display: flex; justify-content: space-between; }
+        .answer-item .q-type { font-size: 12px; color: #888; }
+        .answer-item .option-group { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+        .answer-item .option-item { display: flex; align-items: center; gap: 4px; cursor: pointer; font-size: 14px; }
+        .answer-item textarea { width: 100%; resize: vertical; min-height: 60px; font-size: 14px; padding: 6px; border: 1px solid #ddd; border-radius: 4px; }
+        .answer-item input[type="text"] { width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; }
+        .answer-item .fill-blank-group { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 4px; }
+        .answer-item .fill-blank-input { flex: 1; min-width: 120px; max-width: 200px; }
+        .answer-footer { padding: 10px 14px; background: #f8f9fa; border-top: 1px solid #ddd; display: flex; justify-content: space-between; align-items: center; gap: 4px; flex-wrap: wrap; }
+        .save-indicator { font-size: 12px; color: #28a745; }
+        .save-indicator.saving { color: #ffc107; }
+        .save-indicator.error { color: #dc3545; }
+        .progress-dots { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+        .progress-dot { width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; cursor: pointer; border: 1px solid #ccc; background: #fff; transition: all 0.2s; }
+        .progress-dot.answered { background: #28a745; color: #fff; border-color: #28a745; }
+        .progress-dot.current { border: 2px solid #007bff; font-weight: bold; transform: scale(1.1); }
+        .progress-dot:hover { transform: scale(1.15); }
+        .progress-summary { font-size: 13px; color: #555; }
+        .highlight-flash { position: absolute; border: 3px solid #007bff; border-radius: 4px; pointer-events: none; animation: fadeOut 1.5s forwards; z-index: 10; }
+        @keyframes fadeOut { 0% { opacity: 1; } 100% { opacity: 0; } }
+        .submit-modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+        .submit-modal { background: #fff; border-radius: 8px; padding: 24px; max-width: 400px; width: 90%; text-align: center; }
+        .network-badge { font-size: 11px; padding: 1px 8px; border-radius: 10px; }
+        .network-badge.online { background: #28a745; color: #fff; }
+        .network-badge.offline { background: #dc3545; color: #fff; }
+        .image-container { display: flex; flex-direction: column; align-items: center; padding: 10px; }
+        .image-container img { max-width: 100%; box-shadow: 0 2px 8px rgba(0,0,0,.1); margin-bottom: 10px; }
+        @media (max-width: 768px) {
+            .answer-panel { width: 100%; max-height: 50vh; }
+            .split-container { flex-direction: column; }
+            .paper-panel { height: 50vh; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- 顶部栏 -->
+<div class="top-bar">
+    <span class="title">{{ preset.title }}</span>
+    <div style="display:flex;align-items:center;gap:10px;">
+        <span>考生：{{ student_name }}</span>
+        <span class="network-badge online" id="networkBadge">在线</span>
+        <span class="timer" id="timer">{{ '%02d:%02d' | format(duration_minutes, 0) }}</span>
+    </div>
+</div>
+
+<!-- 分屏区域 -->
+<div class="split-container">
+    <!-- 左侧试卷 -->
+    <div class="paper-panel" id="paperPanel" oncontextmenu="return false;">
+        <div class="paper-controls">
+            <button class="btn btn-sm btn-outline-secondary" onclick="prevPage()">◀</button>
+            <span class="page-info">第 <span id="curPage">1</span> / <span id="totalPages">{% if paper.file_type == 'image' %}{{ paper.page_count }}{% else %}1{% endif %}</span> 页</span>
+            <button class="btn btn-sm btn-outline-secondary" onclick="nextPage()">▶</button>
+            <input type="number" id="pageInput" min="1" max="1" value="1" style="width:50px;text-align:center;" onchange="goToPage(this.value)">
+            <button class="btn btn-sm btn-outline-secondary" onclick="zoomOut()">−</button>
+            <span id="zoomLevel">100%</span>
+            <button class="btn btn-sm btn-outline-secondary" onclick="zoomIn()">+</button>
+        </div>
+        <div class="pdf-container" id="pdfContainer" onselectstart="return false;" ondragstart="return false;" oncontextmenu="return false;">
+            <div id="pdfViewer" style="position:relative;width:100%;"></div>
+        </div>
+    </div>
+
+    <!-- 右侧答题卡 -->
+    <div class="answer-panel">
+        <div class="answer-header">
+            <span><strong>答题卡</strong> <span class="progress-summary" id="progressSummary"></span></span>
+            <span class="save-indicator" id="saveIndicator">已保存</span>
+        </div>
+        <div class="progress-dots" id="progressDots" style="padding:8px 14px 0;"></div>
+        <div class="answer-list" id="answerList"></div>
+        <div class="answer-footer">
+            <button class="btn btn-outline-secondary btn-sm" onclick="scrollToAnswer('prev')">◀ 上一题</button>
+            <button class="btn btn-outline-success btn-sm" onclick="manualSave()"><i class="bi bi-save"></i> 保存作答</button>
+            <button class="btn btn-primary btn-sm" onclick="showSubmitConfirm()">提交试卷</button>
+            <button class="btn btn-outline-secondary btn-sm" onclick="scrollToAnswer('next')">下一题 ▶</button>
+        </div>
+    </div>
+</div>
+
+<!-- 提交确认弹窗 -->
+<div class="submit-modal-overlay" id="submitModal" style="display:none;">
+    <div class="submit-modal">
+        <h5>确认提交</h5>
+        <p id="submitSummary"></p>
+        <p style="color:#e74c3c;">提交后将无法修改答案</p>
+        <button class="btn btn-secondary" onclick="hideSubmitConfirm()">继续作答</button>
+        <button class="btn btn-danger" onclick="submitExam()">确认提交</button>
+    </div>
+</div>
+
+<script>
+    const EXAM_ID = {{ exam_id }};
+    const DURATION_SECONDS = {{ duration_minutes * 60 }};
+    const ANSWER_CONFIG = {{ answer_config | tojson | safe }};
+    const PAPER_URL = "{{ url_for('serve_paper_file', bank_id=paper.id) }}";
+    const totalPages = {{ paper.page_count if paper.page_count and paper.page_count > 0 else 1 }};
+    const questionPositions = {{ (json.loads(paper.question_positions) if paper.question_positions else []) | tojson | safe }};
+    const FILE_TYPE = "{{ paper.file_type or 'pdf' }}";
+
+    let currentPage = 1;
+    let currentScale = 1.2;
+    let pdfDoc = null;
+    let answers = {};
+    let remainingSeconds = DURATION_SECONDS;
+    let saveTimeout = null;
+    let timerInterval = null;
+    let currentQuestionIndex = 0;
+    let isSubmitting = false;
+
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+    // ========== 试卷加载（PDF 或 图片） ==========
+
+    async function loadPaper() {
+        if (FILE_TYPE === 'pdf') {
+            await loadPDF();
+        } else {
+            loadImages();
+        }
+    }
+
+    async function loadPDF() {
+        try {
+            pdfDoc = await pdfjsLib.getDocument(PAPER_URL).promise;
+            document.getElementById('totalPages').textContent = pdfDoc.numPages;
+            document.getElementById('pageInput').max = pdfDoc.numPages;
+            renderPage(currentPage);
+        } catch(e) {
+            document.getElementById('pdfViewer').innerHTML = '<p style="color:red;padding:20px;">试卷加载失败: ' + e.message + '</p>';
+        }
+    }
+
+    async function renderPage(num) {
+        if (!pdfDoc) return;
+        currentPage = num;
+        document.getElementById('curPage').textContent = num;
+        document.getElementById('pageInput').value = num;
+        const page = await pdfDoc.getPage(num);
+        const viewport = page.getViewport({scale: currentScale});
+        const canvas = document.createElement('canvas');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        const ctx = canvas.getContext('2d');
+        await page.render({canvasContext: ctx, viewport: viewport}).promise;
+        const viewer = document.getElementById('pdfViewer');
+        viewer.innerHTML = '';
+        viewer.appendChild(canvas);
+    }
+
+    function loadImages() {
+        const viewer = document.getElementById('pdfViewer');
+        viewer.innerHTML = '<div class="image-container" id="imageContainer"></div>';
+        const container = document.getElementById('imageContainer');
+        for (let i = 1; i <= totalPages; i++) {
+            const img = document.createElement('img');
+            img.src = PAPER_URL + '?page=' + i;
+            img.alt = '第' + i + '页';
+            img.style.maxWidth = (currentScale * 100) + '%';
+            img.draggable = false;
+            container.appendChild(img);
+        }
+        document.getElementById('totalPages').textContent = totalPages;
+        document.getElementById('pageInput').max = totalPages;
+    }
+
+    function prevPage() {
+        if (FILE_TYPE === 'pdf') {
+            if (currentPage > 1) renderPage(currentPage - 1);
+        } else {
+            scrollToImagePage(currentPage - 1);
+        }
+    }
+
+    function nextPage() {
+        if (FILE_TYPE === 'pdf') {
+            if (currentPage < pdfDoc.numPages) renderPage(currentPage + 1);
+        } else {
+            scrollToImagePage(currentPage + 1);
+        }
+    }
+
+    function scrollToImagePage(num) {
+        if (num < 1 || num > totalPages) return;
+        currentPage = num;
+        document.getElementById('curPage').textContent = num;
+        document.getElementById('pageInput').value = num;
+        const container = document.getElementById('pdfContainer');
+        const imgs = document.querySelectorAll('#imageContainer img');
+        let offsetTop = 0;
+        for (let i = 0; i < num - 1 && i < imgs.length; i++) {
+            offsetTop += imgs[i].offsetHeight + 10;
+        }
+        container.scrollTop = offsetTop;
+    }
+
+    function goToPage(num) {
+        const n = parseInt(num);
+        if (FILE_TYPE === 'pdf') {
+            if (n >= 1 && n <= (pdfDoc ? pdfDoc.numPages : totalPages)) renderPage(n);
+        } else {
+            scrollToImagePage(n);
+        }
+    }
+
+    function zoomIn() {
+        currentScale = Math.min(currentScale + 0.2, 3.0);
+        if (FILE_TYPE === 'pdf') {
+            renderPage(currentPage);
+        } else {
+            document.querySelectorAll('#imageContainer img').forEach(img => {
+                img.style.maxWidth = (currentScale * 100) + '%';
+            });
+        }
+        document.getElementById('zoomLevel').textContent = Math.round(currentScale * 100) + '%';
+    }
+
+    function zoomOut() {
+        currentScale = Math.max(currentScale - 0.2, 0.5);
+        if (FILE_TYPE === 'pdf') {
+            renderPage(currentPage);
+        } else {
+            document.querySelectorAll('#imageContainer img').forEach(img => {
+                img.style.maxWidth = (currentScale * 100) + '%';
+            });
+        }
+        document.getElementById('zoomLevel').textContent = Math.round(currentScale * 100) + '%';
+    }
+
+    // ========== 答题卡构建 ==========
+
+    function buildAnswerCard() {
+        const list = document.getElementById('answerList');
+        const dots = document.getElementById('progressDots');
+        list.innerHTML = '';
+        dots.innerHTML = '';
+        ANSWER_CONFIG.forEach((q, idx) => {
+            const dot = document.createElement('span');
+            dot.className = 'progress-dot';
+            dot.textContent = q.num;
+            dot.title = '第' + q.num + '题';
+            dot.onclick = () => { scrollToQuestion(idx); };
+            dots.appendChild(dot);
+
+            const div = document.createElement('div');
+            div.className = 'answer-item';
+            div.id = 'q-' + idx;
+            let inputHtml = '';
+            const typeName = String(q.type || '').trim();
+
+            if (typeName === '单选' || typeName === 'single_choice') {
+                const opts = (q.options || '').split('|').filter(o => o.trim());
+                inputHtml = '<div class="option-group">';
+                opts.forEach(opt => {
+                    inputHtml += '<label class="option-item"><input type="radio" name="q_' + q.num + '" value="' + opt.trim() + '" onchange="saveAnswer(' + q.num + ', this.value)">' + opt.trim() + '</label>';
+                });
+                inputHtml += '</div>';
+
+            } else if (typeName === '多选' || typeName === 'multiple_choice') {
+                const opts = (q.options || '').split('|').filter(o => o.trim());
+                inputHtml = '<div class="option-group">';
+                opts.forEach(opt => {
+                    inputHtml += '<label class="option-item"><input type="checkbox" class="mc-' + q.num + '" value="' + opt.trim() + '" onchange="saveMultiAnswer(' + q.num + ')">' + opt.trim() + '</label>';
+                });
+                inputHtml += '</div>';
+
+            } else if (typeName === '判断' || typeName === 'true_false' || typeName === '判断题') {
+                inputHtml = '<div class="option-group">';
+                inputHtml += '<label class="option-item"><input type="radio" name="q_' + q.num + '" value="对" onchange="saveAnswer(' + q.num + ', this.value)"> 对</label>';
+                inputHtml += '<label class="option-item"><input type="radio" name="q_' + q.num + '" value="错" onchange="saveAnswer(' + q.num + ', this.value)"> 错</label>';
+                inputHtml += '</div>';
+
+            } else if (typeName === '填空' || typeName === 'fill_blank' || typeName === '填空题') {
+                var answerStr = q.answer || '';
+                var blanks = answerStr.split(/[/、,，；;]/).filter(function(b) { return b.trim(); });
+                var blankCount = blanks.length > 0 ? blanks.length : 1;
+                
+                inputHtml = '<div class="fill-blank-group">';
+                for (var i = 0; i < blankCount; i++) {
+                    inputHtml += '<input type="text" name="q_' + q.num + '_' + i + '" placeholder="第' + (i + 1) + '空" onchange="saveAnswer(' + q.num + ', getBlankAnswers(' + q.num + '))" class="fill-blank-input">';
+                }
+                inputHtml += '</div>';
+
+            } else if (typeName === '简答' || typeName === 'short_answer' || typeName === '简答题' || typeName === '问答' || typeName === '问答题') {
+                inputHtml = '<textarea name="q_' + q.num + '" placeholder="请输入答案" rows="3" onchange="saveAnswer(' + q.num + ', this.value)"></textarea>';
+
+            } else {
+                inputHtml = '<p style="color:#999;font-size:13px;">未知题型: ' + typeName + '</p>';
+            }
+
+            div.innerHTML = '<div class="q-num"><span>第' + q.num + '题</span><span class="q-type">' + typeName + ' (' + q.score + '分)</span></div>' + inputHtml;
+            list.appendChild(div);
+        });
+        updateProgressSummary();
+    }
+
+    // ========== 答案保存与加载 ==========
+
+    function getBlankAnswers(qNum) {
+        const inputs = document.querySelectorAll('input[name^="q_' + qNum + '_"]');
+        const values = Array.from(inputs).map(input => input.value.trim());
+        return values.join('、');
+    }
+
+    function saveAnswer(qNum, value) {
+        answers[qNum] = value;
+        updateProgressDots();
+        updateProgressSummary();
+        saveToLocalCache();
+        scheduleAutoSave();
+    }
+
+    function saveMultiAnswer(qNum) {
+        const checked = document.querySelectorAll('.mc-' + qNum + ':checked');
+        const vals = Array.from(checked).map(cb => cb.value);
+        answers[qNum] = vals.join(',');
+        updateProgressDots();
+        updateProgressSummary();
+        saveToLocalCache();
+        scheduleAutoSave();
+    }
+
+    function scrollToQuestion(idx) {
+        if (idx < 0 || idx >= ANSWER_CONFIG.length) return;
+        currentQuestionIndex = idx;
+        const el = document.getElementById('q-' + idx);
+        if (el) el.scrollIntoView({behavior: 'smooth', block: 'center'});
+        highlightAllItems();
+        const qConfig = ANSWER_CONFIG[idx];
+        if (qConfig && questionPositions && questionPositions.length > 0) {
+            const pos = questionPositions.find(p => p.num == qConfig.num);
+            if (pos && pos.page && pos.page !== currentPage) {
+                goToPage(pos.page);
+            }
+        }
+    }
+
+    function scrollToAnswer(dir) {
+        if (dir === 'next' && currentQuestionIndex < ANSWER_CONFIG.length - 1) currentQuestionIndex++;
+        else if (dir === 'prev' && currentQuestionIndex > 0) currentQuestionIndex--;
+        scrollToQuestion(currentQuestionIndex);
+    }
+
+    function highlightAllItems() {
+        document.querySelectorAll('.answer-item').forEach((el, i) => {
+            el.classList.toggle('current', i === currentQuestionIndex);
+        });
+        document.querySelectorAll('.progress-dot').forEach((el, i) => {
+            el.classList.toggle('current', i === currentQuestionIndex);
+        });
+    }
+
+    function updateProgressDots() {
+        document.querySelectorAll('.progress-dot').forEach((dot, i) => {
+            const qConfig = ANSWER_CONFIG[i];
+            if (qConfig && answers[qConfig.num] && answers[qConfig.num].toString().trim()) {
+                dot.classList.add('answered');
+            } else {
+                dot.classList.remove('answered');
+            }
+        });
+    }
+
+    function updateProgressSummary() {
+        const total = ANSWER_CONFIG.length;
+        const answered = Object.values(answers).filter(v => v && v.toString().trim()).length;
+        document.getElementById('progressSummary').textContent = '已答:' + answered + ' 未答:' + (total - answered);
+    }
+
+    // ========== 自动保存 ==========
+
+    function scheduleAutoSave() {
+        clearTimeout(saveTimeout);
+        saveTimeout = setTimeout(autoSave, 300);
+    }
+
+    async function manualSave() {
+        clearTimeout(saveTimeout);
+        await autoSave();
+        const indicator = document.getElementById('saveIndicator');
+        indicator.textContent = '已保存 ' + new Date().toLocaleTimeString();
+        indicator.className = 'save-indicator';
+    }
+
+    async function autoSave() {
+        const indicator = document.getElementById('saveIndicator');
+        indicator.textContent = '保存中...';
+        indicator.className = 'save-indicator saving';
+        try {
+            const resp = await fetch('/api/paper_exam/' + EXAM_ID + '/auto_save', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({answers: answers})
+            });
+            const data = await resp.json();
+            if (data.success) {
+                indicator.textContent = '已保存 ' + new Date().toLocaleTimeString();
+                indicator.className = 'save-indicator';
+                document.getElementById('networkBadge').textContent = '在线';
+                document.getElementById('networkBadge').className = 'network-badge online';
+                saveToLocalCache();
+            } else {
+                indicator.textContent = '保存失败';
+                indicator.className = 'save-indicator error';
+            }
+        } catch(e) {
+            console.error('AutoSave error:', e);
+            indicator.textContent = '离线暂存';
+            indicator.className = 'save-indicator saving';
+            document.getElementById('networkBadge').textContent = '离线';
+            document.getElementById('networkBadge').className = 'network-badge offline';
+            saveToLocalCache();
+        }
+    }
+
+    // ========== 本地缓存（离线恢复） ==========
+
+    function saveToLocalCache() {
+        try {
+            const cache = {
+                answers: answers,
+                timestamp: new Date().getTime(),
+                examId: EXAM_ID
+            };
+            localStorage.setItem('paper_exam_' + EXAM_ID, JSON.stringify(cache));
+        } catch(e) { /* ignore */ }
+    }
+
+    function loadFromLocalCache() {
+        try {
+            const raw = localStorage.getItem('paper_exam_' + EXAM_ID);
+            if (!raw) return null;
+            return JSON.parse(raw);
+        } catch(e) { return null; }
+    }
+
+    async function loadSavedAnswers() {
+        try {
+            const resp = await fetch('/api/paper_exam/' + EXAM_ID + '/load');
+            const data = await resp.json();
+            if (data.success && data.answers) {
+                answers = data.answers;
+                restoreAnswersToUI();
+                return;
+            }
+        } catch(e) {
+            console.error('Server load failed, trying local cache:', e);
+        }
+        const local = loadFromLocalCache();
+        if (local && local.answers) {
+            answers = local.answers;
+            restoreAnswersToUI();
+        }
+    }
+
+    function restoreAnswersToUI() {
+        Object.keys(answers).forEach(qNum => {
+            const qConfig = ANSWER_CONFIG.find(q => q.num == qNum);
+            if (!qConfig) return;
+            const typeName = String(qConfig.type || '').trim();
+            if (typeName === '单选' || typeName === 'single_choice' || typeName === '判断' || typeName === 'true_false' || typeName === '判断题') {
+                const radio = document.querySelector('input[name="q_' + qNum + '"][value="' + answers[qNum] + '"]');
+                if (radio) radio.checked = true;
+            } else if (typeName === '多选' || typeName === 'multiple_choice') {
+                const vals = answers[qNum].split(',');
+                vals.forEach(v => {
+                    const cb = document.querySelector('.mc-' + qNum + '[value="' + v.trim() + '"]');
+                    if (cb) cb.checked = true;
+                });
+            } else if (typeName === '填空' || typeName === 'fill_blank' || typeName === '填空题') {
+                const vals = answers[qNum].split('、');
+                vals.forEach((v, i) => {
+                    const input = document.querySelector('input[name="q_' + qNum + '_' + i + '"]');
+                    if (input) input.value = v.trim();
+                });
+            } else {
+                const input = document.querySelector('[name="q_' + qNum + '"]');
+                if (input) input.value = answers[qNum];
+            }
+        });
+        updateProgressDots();
+        updateProgressSummary();
+    }
+
+    // ========== 提交 ==========
+
+    function showSubmitConfirm() {
+        const total = ANSWER_CONFIG.length;
+        const answered = Object.values(answers).filter(v => v && v.toString().trim()).length;
+        document.getElementById('submitSummary').textContent = '共' + total + '题，已作答' + answered + '题，未作答' + (total - answered) + '题';
+        document.getElementById('submitModal').style.display = 'flex';
+    }
+
+    function hideSubmitConfirm() {
+        document.getElementById('submitModal').style.display = 'none';
+    }
+
+    async function submitExam() {
+        if (isSubmitting) return;
+        isSubmitting = true;
+        clearInterval(timerInterval);
+        clearTimeout(saveTimeout);
+        await autoSave();
+        const elapsed = Math.max(1, DURATION_SECONDS - remainingSeconds);
+        try {
+            const resp = await fetch('/api/paper_exam/' + EXAM_ID + '/submit', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({answers: answers, duration_used: elapsed})
+            });
+            const data = await resp.json();
+            if (data.success) {
+                localStorage.removeItem('paper_exam_' + EXAM_ID);
+                window.onbeforeunload = null;
+                document.getElementById('submitModal').innerHTML = '<div class="submit-modal"><h5>✅ 提交成功</h5><p>得分：<strong>' + data.total_score + '</strong> 分</p><p>正在返回答题历史页...</p></div>';
+                setTimeout(function() { window.location.href = '/student_dashboard'; }, 1500);
+            } else {
+                alert('提交失败: ' + (data.message || '未知错误'));
+                isSubmitting = false;
+                timerInterval = setInterval(updateTimer, 1000);
+            }
+        } catch(e) {
+            alert('提交失败: ' + e.message);
+            isSubmitting = false;
+            timerInterval = setInterval(updateTimer, 1000);
+        }
+    }
+
+    // ========== 计时器 ==========
+
+    function updateTimer() {
+        if (remainingSeconds <= 0) {
+            clearInterval(timerInterval);
+            submitExam();
+            return;
+        }
+        remainingSeconds--;
+        const m = Math.floor(remainingSeconds / 60);
+        const s = remainingSeconds % 60;
+        const timer = document.getElementById('timer');
+        timer.textContent = String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+        if (remainingSeconds < 300) timer.classList.add('warning');
+    }
+
+    // ========== 键盘防复制 ==========
+
+    document.addEventListener('keydown', function(e) {
+        if (e.ctrlKey && (e.key === 'c' || e.key === 's' || e.key === 'p' || e.key === 'u' || e.key === 'S')) {
+            e.preventDefault();
+            return false;
+        }
+        if (e.key === 'F12' || (e.ctrlKey && e.shiftKey && e.key === 'I')) {
+            e.preventDefault();
+            return false;
+        }
+    });
+
+    document.addEventListener('contextmenu', function(e) {
+        e.preventDefault();
+        return false;
+    });
+
+    // ========== 在线/离线检测 ==========
+
+    function checkNetwork() {
+        const badge = document.getElementById('networkBadge');
+        if (navigator.onLine) {
+            badge.textContent = '在线';
+            badge.className = 'network-badge online';
+        } else {
+            badge.textContent = '离线';
+            badge.className = 'network-badge offline';
+        }
+    }
+
+    window.addEventListener('online', checkNetwork);
+    window.addEventListener('offline', checkNetwork);
+
+    // ========== 初始化 ==========
+
+    window.onload = async function() {
+        buildAnswerCard();
+        await loadPaper();
+        await loadSavedAnswers();
+        highlightAllItems();
+        updateProgressSummary();
+        checkNetwork();
+        timerInterval = setInterval(updateTimer, 1000);
+        document.getElementById('submitModal').addEventListener('click', function(e) {
+            if (e.target === this) hideSubmitConfirm();
+        });
+
+        // 窗口关闭前保存到本地缓存
+        window.addEventListener('beforeunload', function() {
+            clearTimeout(saveTimeout);
+            saveToLocalCache();
+        });
+    };
+
+    window.onbeforeunload = function() {
+        return '您有未提交的作答，确定离开吗？';
+    };
+</script>
+</body>
+</html>

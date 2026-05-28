@@ -43,8 +43,10 @@ def bjtime_filter(value, fmt='%Y-%m-%d %H:%M'):
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your-secret-key'
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///test_system.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(os.path.dirname(os.path.abspath(__file__)), 'instance', 'test_system.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 db = SQLAlchemy(app)
 
 # 请求去重装饰器
@@ -208,6 +210,11 @@ class TestPreset(db.Model):
     short_answer_grading_method = db.Column(db.String(20), default='manual')  # 'manual' 或 'ai'
     fill_blank_grading_method = db.Column(db.String(20), default='manual')  # 'manual' 或 'ai'
     
+    # 试卷模式字段
+    test_mode = db.Column(db.String(20), default='question_bank')  # 'question_bank' 或 'paper'
+    paper_id = db.Column(db.Integer, db.ForeignKey('paper_bank.id'))
+    duration_minutes = db.Column(db.Integer)  # 考试时长（分钟）
+    
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 class ShortAnswerSubmission(db.Model):
@@ -240,6 +247,41 @@ class FillBlankSubmission(db.Model):
     ai_feedback = db.Column(db.Text, nullable=True)  # AI反馈
     manual_reviewed = db.Column(db.Boolean, default=False)  # 是否经过人工复核
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+# --- 试卷模式相关模型 ---
+class PaperBank(db.Model):
+    """试卷库"""
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(200), nullable=False)
+    paper_path = db.Column(db.String(500))  # 试卷文件路径
+    answer_path = db.Column(db.String(500))  # 参考答案PDF路径
+    excel_path = db.Column(db.String(500))  # 答题卡Excel配置文件路径
+    answer_config = db.Column(db.Text)  # Excel答题卡配置JSON
+    question_positions = db.Column(db.Text)  # PDF题号定位信息JSON: [{num, page, y}, ...]
+    file_type = db.Column(db.String(20), default='pdf')  # 'pdf' 或 'image'
+    page_count = db.Column(db.Integer, default=0)
+    total_questions = db.Column(db.Integer, default=0)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('user.id'))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+class PaperExamRecord(db.Model):
+    """试卷模式考试记录"""
+    id = db.Column(db.Integer, primary_key=True)
+    preset_id = db.Column(db.Integer, db.ForeignKey('test_preset.id'), nullable=False)
+    student_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    student_name = db.Column(db.String(100), nullable=False)
+    class_number = db.Column(db.String(50), nullable=False)
+    answers_json = db.Column(db.Text)  # 学生作答JSON: {question_num: answer, ...}
+    ai_grading_results = db.Column(db.Text)  # AI批改结果JSON
+    total_score = db.Column(db.Float, default=0.0)
+    is_submitted = db.Column(db.Boolean, default=False)
+    submitted_at = db.Column(db.DateTime)
+    auto_save_at = db.Column(db.DateTime)
+    duration_used = db.Column(db.Integer)  # 实际用时（秒）
+    ip_address = db.Column(db.String(50))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    preset = db.relationship('TestPreset', backref=db.backref('paper_exams', lazy=True))
+    student = db.relationship('User', backref=db.backref('paper_exams', lazy=True))
 
 def shuffle_options(question):
     """
@@ -274,7 +316,50 @@ def init_db():
         with app.app_context():
             # 创建所有表
             db.create_all()
-            print("✓ 数据库表创建成功")
+            print("[OK] 数据库表创建成功")
+            
+            # 数据库迁移：添加新列到现有表
+            try:
+                # 检查并添加 test_preset 表的新列
+                import sqlalchemy as sa
+                inspector = sa.inspect(db.engine)
+                
+                # 获取 test_preset 表的列名
+                preset_columns = [col['name'] for col in inspector.get_columns('test_preset')]
+                
+                # 添加 test_mode 列
+                if 'test_mode' not in preset_columns:
+                    db.session.execute(sa.text('ALTER TABLE test_preset ADD COLUMN test_mode VARCHAR(20) DEFAULT "question_bank"'))
+                    print("[OK] 添加 test_preset.test_mode 列")
+                
+                # 添加 paper_id 列
+                if 'paper_id' not in preset_columns:
+                    db.session.execute(sa.text('ALTER TABLE test_preset ADD COLUMN paper_id INTEGER'))
+                    print("[OK] 添加 test_preset.paper_id 列")
+                
+                # 添加 duration_minutes 列
+                if 'duration_minutes' not in preset_columns:
+                    db.session.execute(sa.text('ALTER TABLE test_preset ADD COLUMN duration_minutes INTEGER DEFAULT 120'))
+                    print("[OK] 添加 test_preset.duration_minutes 列")
+                
+                # 检查 paper_bank 表
+                paper_columns = [col['name'] for col in inspector.get_columns('paper_bank')]
+                
+                # 添加 paper_bank 表的新列
+                if 'total_questions' not in paper_columns:
+                    db.session.execute(sa.text('ALTER TABLE paper_bank ADD COLUMN total_questions INTEGER DEFAULT 0'))
+                    print("[OK] 添加 paper_bank.total_questions 列")
+                if 'page_count' not in paper_columns:
+                    db.session.execute(sa.text('ALTER TABLE paper_bank ADD COLUMN page_count INTEGER DEFAULT 0'))
+                    print("[OK] 添加 paper_bank.page_count 列")
+                if 'excel_path' not in paper_columns:
+                    db.session.execute(sa.text('ALTER TABLE paper_bank ADD COLUMN excel_path VARCHAR(500)'))
+                    print("[OK] 添加 paper_bank.excel_path 列")
+                
+                db.session.commit()
+            except Exception as e:
+                db.session.rollback()
+                print(f"[WARN] 数据库迁移警告（可忽略）: {str(e)}")
             
             # 检查并创建默认教师账户
             admin = User.query.filter_by(username='admin', role='teacher').first()
@@ -283,16 +368,16 @@ def init_db():
                 admin.set_password('admin')
                 db.session.add(admin)
                 db.session.commit()
-                print("✓ 默认教师账户创建成功 (用户名: admin, 密码: admin)")
-                print("⚠ 警告：请在首次登录后立即修改默认密码！")
+                print("[OK] 默认教师账户创建成功 (用户名: admin, 密码: admin)")
+                print("[WARN] 请在首次登录后立即修改默认密码！")
             else:
-                print("✓ 默认教师账户已存在")
+                print("[OK] 默认教师账户已存在")
             
-            print("✓ 数据库初始化完成")
+            print("[OK] 数据库初始化完成")
             return True
             
     except Exception as e:
-        print(f"✗ 数据库初始化失败: {str(e)}")
+        print(f"[ERR] 数据库初始化失败: {str(e)}")
         import traceback
         traceback.print_exc()
         return False
@@ -401,6 +486,10 @@ def student_start():
         # 标准化班级号：去除"班"字和前后空格，统一格式
         class_number = class_number.strip().replace('班', '').strip()
         
+        # 获取当前测试设置
+        current_test = Test.query.filter_by(is_active=True).first()
+        allow_student_choice = current_test.allow_student_choice if current_test else False
+        
         # 在创建学生账户前，先检查是否有可用的测试
         if test_content:
             # 学生选择了预设
@@ -409,12 +498,48 @@ def student_start():
                 flash('选择的测试内容不存在，请联系管理员')
                 return render_template('student_start.html')
         else:
-            # 学生没有选择，检查是否有激活的测试
-            current_test = Test.query.filter_by(is_active=True).first()
-            if not current_test:
-                # 如果没有激活的测试，尝试获取最新的测试
-                current_test = Test.query.order_by(Test.created_at.desc()).first()
+            # 学生没有选择测试内容
+            if allow_student_choice:
+                # 如果设置了允许学生自选，但学生没有选择，提示错误
+                flash('请选择测试内容后开始')
+                return render_template('student_start.html')
+            else:
+                # 如果没有设置允许学生自选，自动查找最新保存的测试内容
+                # 优先查找同名的试卷模式预设
+                if current_test:
+                    paper_preset = TestPreset.query.filter_by(title=current_test.title, test_mode='paper').first()
+                    if paper_preset:
+                        test_content = str(paper_preset.id)
+                        preset = paper_preset
+                    else:
+                        # 查找最新的试卷模式预设
+                        paper_preset = TestPreset.query.filter_by(test_mode='paper').order_by(TestPreset.created_at.desc()).first()
+                        if paper_preset:
+                            test_content = str(paper_preset.id)
+                            preset = paper_preset
             
+            # 如果还是没有找到预设，检查激活的测试是否有题目
+            if not test_content and current_test:
+                has_questions = (current_test.single_choice_count or 0) + \
+                               (current_test.multiple_choice_count or 0) + \
+                               (current_test.true_false_count or 0) + \
+                               (current_test.fill_blank_count or 0) + \
+                               (current_test.short_answer_count or 0) > 0
+                
+                if not has_questions:
+                    # 如果激活的测试没有题目，查找可用的测试预设
+                    latest_preset = TestPreset.query.order_by(TestPreset.created_at.desc()).first()
+                    if latest_preset:
+                        test_content = str(latest_preset.id)
+                        preset = latest_preset
+                    else:
+                        flash('当前没有可用的测试，请联系管理员')
+                        return render_template('student_start.html')
+        
+        # 试卷模式不需要检查 active test
+        if test_content and getattr(preset, 'test_mode', 'question_bank') != 'paper':
+            if not current_test:
+                current_test = Test.query.order_by(Test.created_at.desc()).first()
             if not current_test:
                 flash('当前没有可用的测试，请联系管理员')
                 return render_template('student_start.html')
@@ -432,6 +557,14 @@ def student_start():
         session['class_number'] = class_number
         session['role'] = 'student'  # 明确设置学生角色
         session['selected_preset_id'] = test_content if test_content else None  # 新增：存储选择的预设ID
+        
+        # 检查是否为试卷模式
+        if test_content:
+            preset = TestPreset.query.get(int(test_content))
+            if preset and getattr(preset, 'test_mode', 'question_bank') == 'paper':
+                session['user_id'] = student.id
+                # 直接跳转到试卷测试页面
+                return redirect(url_for('student_paper_test', preset_id=test_content))
         
         return redirect(url_for('test'))
     return render_template('student_start.html')
@@ -503,6 +636,7 @@ def student_history_login():
     
     # 设置会话
     session['student_id'] = student.id
+    session['user_id'] = student.id  # 新增：保持与student_start一致
     session['student_name'] = name
     session['class_number'] = class_number
     session['role'] = 'student'
@@ -569,6 +703,32 @@ def test():
             flash('当前没有可用的测试，请联系管理员')
             return redirect(url_for('student_start'))
         
+        # 检查激活的测试是否有题目
+        has_questions = (current_test.single_choice_count or 0) + \
+                       (current_test.multiple_choice_count or 0) + \
+                       (current_test.true_false_count or 0) + \
+                       (current_test.fill_blank_count or 0) + \
+                       (current_test.short_answer_count or 0) > 0
+        
+        # 如果激活的测试没有题目，尝试查找同名的试卷模式预设
+        if not has_questions:
+            paper_preset = TestPreset.query.filter(
+                TestPreset.test_mode == 'paper',
+                TestPreset.title == current_test.title
+            ).first()
+            
+            if not paper_preset:
+                # 尝试查找任意试卷模式预设
+                paper_preset = TestPreset.query.filter_by(test_mode='paper').first()
+            
+            if paper_preset:
+                # 找到试卷预设，直接跳转到试卷测试页面
+                session['selected_preset_id'] = paper_preset.id
+                return redirect(url_for('student_paper_test', preset_id=paper_preset.id))
+            else:
+                flash('当前测试没有题目，请选择测试内容后开始')
+                return redirect(url_for('student_start'))
+        
         # 获取简答题指定题号配置
         short_answer_questions_config = None
         if current_test.short_answer_questions:
@@ -630,13 +790,44 @@ def test():
     # 简答题使用指定题号
     short_answer_questions    = pick_questions('short_answer', test_config['short_answer_count'],   test_config['short_answer_bank_id'], test_config['short_answer_questions'])
     
+    # 考试时长：预设优先，否则默认60分钟
+    duration_minutes = 60
+    if selected_preset_id:
+        preset = TestPreset.query.get(selected_preset_id)
+        if preset and getattr(preset, 'duration_minutes', None):
+            duration_minutes = preset.duration_minutes
+    
     return render_template('test.html', 
                          test=test_config,
+                         test_title=test_config['title'],
+                         duration_minutes=duration_minutes,
                          single_choice_questions=single_choice_questions,
                          multiple_choice_questions=multiple_choice_questions,
                          true_false_questions=true_false_questions,
                          fill_blank_questions=fill_blank_questions,
                          short_answer_questions=short_answer_questions)
+
+@app.route('/api/test_auto_save', methods=['POST'])
+def test_auto_save():
+    """题库模式实时自动保存作答到本地session"""
+    if 'student_id' not in session:
+        return jsonify({'success': False, 'message': '未登录'}), 401
+    
+    data = request.get_json()
+    if data and 'answers' in data:
+        session['auto_saved_answers'] = data['answers']
+        session.modified = True
+        return jsonify({'success': True, 'message': '已保存'})
+    return jsonify({'success': False, 'message': '无数据'}), 400
+
+@app.route('/api/test_load_answers', methods=['GET'])
+def test_load_answers():
+    """加载题库模式自动保存的作答"""
+    if 'student_id' not in session:
+        return jsonify({'success': False, 'message': '未登录'}), 401
+    
+    answers = session.get('auto_saved_answers', {})
+    return jsonify({'success': True, 'answers': answers})
 
 @app.route('/submit_test', methods=['POST'])
 def submit_test():
@@ -741,30 +932,46 @@ def submit_test():
             need_ai_grading = True
         
         if question.question_type == 'single_choice':
-            if answer == question.correct_answer:
-                # 处理test_config可能是字典或对象的情况
+            # 选择题对比答案时忽略大小写
+            if answer.strip().upper() == question.correct_answer.strip().upper():
                 score = test_config.get('single_choice_score') if isinstance(test_config, dict) else test_config.single_choice_score
                 total_score += score or 0
         elif question.question_type == 'multiple_choice':
+            # 多选题忽略参考答案与填写答案之间间隔符号，忽略大小写
             def normalize(ans):
-                return ''.join(sorted([c for c in ans.replace(',', '').replace(' ', '').upper() if c in 'ABCDE']))
+                # 支持多种分隔符：逗号、顿号、空格、斜杠等
+                ans = ans.replace(',', '').replace('，', '').replace('、', '').replace(' ', '').replace('/', '').replace('\\', '')
+                return ''.join(sorted([c for c in ans.upper() if c in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ']))
             is_correct = normalize(answer) == normalize(question.correct_answer)
             if is_correct:
                 score = test_config.get('multiple_choice_score') if isinstance(test_config, dict) else test_config.multiple_choice_score
                 total_score += score or 0
         elif question.question_type == 'true_false':
-            if answer == question.correct_answer:
+            # 判断题参考答案为对和错，支持多种表示方式
+            def normalize_tf(ans):
+                ans = ans.strip().lower()
+                # 认为正确的答案：对、正确、是、√、true、1、对的、是的
+                true_values = {'对', '正确', '是', '√', 'true', '1', '对的', '是的', '真', 't'}
+                # 认为错误的答案：错、错误、否、×、false、0、错的、不是
+                false_values = {'错', '错误', '否', '×', 'false', '0', '错的', '不是', '假', 'f'}
+                if ans in true_values:
+                    return '对'
+                elif ans in false_values:
+                    return '错'
+                return ans
+            
+            if normalize_tf(answer) == normalize_tf(question.correct_answer):
                 score = test_config.get('true_false_score') if isinstance(test_config, dict) else test_config.true_false_score
                 total_score += score or 0
         elif question.question_type == 'fill_blank':
             # 只计算不需要AI批改的填空题分数
             if not need_ai_grading:
                 # 处理填空题多个答案（仅用于非AI批改的情况）
-                # 统一处理分隔符：支持顿号（、）和逗号（,）
+                # 统一处理分隔符：支持顿号（、）、逗号（,）、斜杠（/）
                 def split_fill_answers(text):
-                    """分割答案，支持顿号和逗号"""
+                    """分割答案，支持多种分隔符"""
                     # 先统一替换为顿号
-                    text = text.replace(',', '、')
+                    text = text.replace(',', '、').replace('，', '、').replace('/', '、').replace('\\', '、')
                     return [f.strip().lower() for f in text.split('、') if f.strip()]
                 
                 correct_fill_ins = split_fill_answers(question.correct_answer)
@@ -776,7 +983,7 @@ def submit_test():
                     score_per_fill_in = round((score or 0) / num_fill_ins, 1)
                     fill_blank_score = 0
                     
-                    # 比较每个填空
+                    # 比较每个填空，忽略大小写
                     for i in range(min(len(student_fill_ins), num_fill_ins)):
                         if student_fill_ins[i] == correct_fill_ins[i]:
                             fill_blank_score += score_per_fill_in
@@ -913,13 +1120,30 @@ def submit_test():
                     # 获取题目分值（优先使用自定义分数，否则使用配置中的分数）
                     question_score = 0
                     if question.question_type == 'short_answer':
-                        # 优先使用题目对象上的自定义分数
-                        if hasattr(question, 'custom_score') and question.custom_score:
-                            question_score = question.custom_score
-                        elif isinstance(test_config, dict):
-                            question_score = test_config.get('short_answer_score', 0)
-                        else:
-                            question_score = test_config.short_answer_score or 0
+                        # 优先从 short_answer_questions 配置中获取当前题目的自定义分值
+                        question_score = 0
+                        if isinstance(test_config, dict) and test_config.get('short_answer_questions'):
+                            for q in test_config['short_answer_questions']:
+                                if q['id'] == question_id:
+                                    question_score = q['score']
+                                    break
+                        elif hasattr(test_config, 'short_answer_questions') and test_config.short_answer_questions:
+                            try:
+                                import json
+                                short_answer_config = json.loads(test_config.short_answer_questions)
+                                for q in short_answer_config:
+                                    if q['id'] == question_id:
+                                        question_score = q['score']
+                                        break
+                            except:
+                                pass
+                        
+                        # 如果没有找到自定义分值，使用默认分值
+                        if question_score == 0:
+                            if isinstance(test_config, dict):
+                                question_score = test_config.get('short_answer_score', 0)
+                            else:
+                                question_score = test_config.short_answer_score or 0
                     elif question.question_type == 'fill_blank':
                         if isinstance(test_config, dict):
                             question_score = test_config.get('fill_blank_score', 0)
@@ -1113,6 +1337,71 @@ def student_dashboard():
     # 获取当前测试
     current_test = Test.query.filter_by(is_active=True).first()
     
+    # 如果激活的测试没有题目，尝试查找同名的试卷模式预设
+    if current_test:
+        has_questions = (current_test.single_choice_count or 0) + \
+                       (current_test.multiple_choice_count or 0) + \
+                       (current_test.true_false_count or 0) + \
+                       (current_test.fill_blank_count or 0) + \
+                       (current_test.short_answer_count or 0) > 0
+        
+        if not has_questions:
+            paper_preset = TestPreset.query.filter(
+                TestPreset.test_mode == 'paper',
+                TestPreset.title == current_test.title
+            ).first()
+            
+            if paper_preset and paper_preset.paper_id:
+                paper_bank = PaperBank.query.get(paper_preset.paper_id)
+                if paper_bank and paper_bank.answer_config:
+                    single_count = multi_count = tf_count = fb_count = sa_count = 0
+                    single_score = multi_score = tf_score = fb_score = sa_score = 0
+                    total_score_val = 0
+                    try:
+                        answer_config = json.loads(paper_bank.answer_config) if isinstance(paper_bank.answer_config, str) else paper_bank.answer_config
+                        
+                        for q in answer_config:
+                            q_type = q.get('type', '')
+                            q_score = q.get('score', 0)
+                            total_score_val += q_score
+                            
+                            if q_type in ['单选', 'single_choice']:
+                                single_count += 1
+                                single_score = q_score
+                            elif q_type in ['多选', 'multiple_choice']:
+                                multi_count += 1
+                                multi_score = q_score
+                            elif q_type in ['判断', 'true_false', '判断题']:
+                                tf_count += 1
+                                tf_score = q_score
+                            elif q_type in ['填空', 'fill_blank', '填空题']:
+                                fb_count += 1
+                                fb_score = q_score
+                            elif q_type in ['简答', 'short_answer', '简答题', '问答', '问答题']:
+                                sa_count += 1
+                                sa_score = q_score
+                        
+                        # 创建模拟的测试对象
+                        class MockTest:
+                            title = current_test.title
+                            single_choice_count = single_count
+                            multiple_choice_count = multi_count
+                            true_false_count = tf_count
+                            fill_blank_count = fb_count
+                            short_answer_count = sa_count
+                            single_choice_score = single_score
+                            multiple_choice_score = multi_score
+                            true_false_score = tf_score
+                            fill_blank_score = fb_score
+                            short_answer_score = sa_score
+                            total_score = total_score_val
+                        
+                        current_test = MockTest()
+                        current_test.is_paper_mode = True
+                        current_test.paper_preset_id = paper_preset.id
+                    except Exception as e:
+                        print(f"解析试卷配置失败: {e}")
+    
     # 获取学生历史记录
     history = StudentTestHistory.query.filter_by(
         student_id=session['student_id']
@@ -1132,16 +1421,89 @@ def student_dashboard():
         db.session.add(history)
         db.session.commit()
     
-    # 获取学生的测试结果
+    # 获取学生的测试结果（题库模式）
     test_results = TestResult.query.filter_by(
         student_id=session['student_id']
     ).order_by(TestResult.created_at.desc()).all()
+    
+    # 获取学生的试卷模式考试记录
+    paper_exam_records = PaperExamRecord.query.filter_by(
+        student_id=session['student_id'],
+        is_submitted=True
+    ).order_by(PaperExamRecord.submitted_at.desc()).all()
+    
+    # 组装试卷历史数据
+    paper_history = []
+    for record in paper_exam_records:
+        preset = TestPreset.query.get(record.preset_id)
+        paper_bank = PaperBank.query.get(preset.paper_id) if preset and preset.paper_id else None
+        
+        # 从答题卡配置中读取各题型信息
+        question_stats = {'单选题': 0, '多选题': 0, '判断题': 0, '填空题': 0, '简答题': 0}
+        single_score = multi_score = tf_score = fb_score = sa_score = 0
+        total_possible = 0
+        
+        if paper_bank and paper_bank.answer_config:
+            try:
+                answer_config = json.loads(paper_bank.answer_config) if isinstance(paper_bank.answer_config, str) else paper_bank.answer_config
+                for q in answer_config:
+                    q_type = q.get('type', '')
+                    q_score = q.get('score', 0)
+                    total_possible += q_score
+                    
+                    if q_type in ['单选', 'single_choice']:
+                        question_stats['单选题'] += 1
+                        single_score = q_score
+                    elif q_type in ['多选', 'multiple_choice']:
+                        question_stats['多选题'] += 1
+                        multi_score = q_score
+                    elif q_type in ['判断', 'true_false', '判断题']:
+                        question_stats['判断题'] += 1
+                        tf_score = q_score
+                    elif q_type in ['填空', 'fill_blank', '填空题']:
+                        question_stats['填空题'] += 1
+                        fb_score = q_score
+                    elif q_type in ['简答', 'short_answer', '简答题', '问答', '问答题']:
+                        question_stats['简答题'] += 1
+                        sa_score = q_score
+            except Exception as e:
+                print(f"解析答题卡配置失败: {e}")
+        
+        # 时区转换：UTC转北京时间(UTC+8)
+        local_submitted_at = '未知'
+        if record.submitted_at:
+            # 保存的是UTC时间，需要加8小时转换为北京时间
+            import time
+            timestamp = time.mktime(record.submitted_at.timetuple()) + 8 * 3600  # 加8小时
+            beijing_time = datetime.fromtimestamp(timestamp)
+            local_submitted_at = beijing_time.strftime('%Y-%m-%d %H:%M:%S')
+        
+        paper_history.append({
+            'exam_id': record.id,
+            'preset_id': record.preset_id,
+            'title': preset.title if preset else ('试卷#' + str(record.preset_id)),
+            'total_score': record.total_score or 0,
+            'total_possible': total_possible,
+            'submitted_at': local_submitted_at,
+            'duration_used': record.duration_used or 0,
+        })
+    
+    # 合并统计到 history
+    paper_count = len(paper_exam_records)
+    if paper_count > 0:
+        paper_scores = [r['total_score'] for r in paper_history]
+        history.test_count += paper_count
+        combined_total = (history.total_score or 0) + sum(paper_scores)
+        combined_count = history.test_count
+        history.average_score = round(combined_total / combined_count, 1) if combined_count > 0 else 0
+        history.highest_score = max(history.highest_score or 0, max(paper_scores))
     
     return render_template('student_dashboard.html',
                          student=student,
                          current_test=current_test,
                          history=history,
-                         test_results=test_results)
+                         test_results=test_results,
+                         paper_history=paper_history)
 
 @app.route('/test_statistics')
 def test_statistics():
@@ -2459,6 +2821,30 @@ def save_test_settings():
         fill_blank_bank_id = request.form.get('fill_blank_bank')
         short_answer_bank_id = request.form.get('short_answer_bank')
         
+        # 试卷模式字段
+        test_mode = request.form.get('test_mode', 'question_bank')
+        paper_id = request.form.get('paper_id')
+        duration_minutes = request.form.get('duration_minutes')
+        
+        # 试卷模式下清空题库相关字段
+        if test_mode == 'paper':
+            single_choice_count = 0
+            multiple_choice_count = 0
+            true_false_count = 0
+            fill_blank_count = 0
+            short_answer_count = 0
+            single_choice_score = 0
+            multiple_choice_score = 0
+            true_false_score = 0
+            fill_blank_score = 0
+            short_answer_score = 0
+            short_answer_questions_json = None
+            single_choice_bank_id = None
+            multiple_choice_bank_id = None
+            true_false_bank_id = None
+            fill_blank_bank_id = None
+            short_answer_bank_id = None
+        
         allow_student_choice = request.form.get('allow_student_choice') == 'true'
         
         # 获取AI批改方式设置
@@ -2489,11 +2875,12 @@ def save_test_settings():
         if not title:
             return jsonify({'success': False, 'message': '测试标题不能为空'}), 400
         
-        # 验证至少有一种题型
-        total_questions = (single_choice_count + multiple_choice_count + 
-                          true_false_count + fill_blank_count + short_answer_count)
-        if total_questions == 0:
-            return jsonify({'success': False, 'message': '至少需要设置一种题型的题目数量'}), 400
+        # 验证至少有一种题型（仅题库模式需要检查）
+        if test_mode != 'paper':
+            total_questions = (single_choice_count + multiple_choice_count + 
+                              true_false_count + fill_blank_count + short_answer_count)
+            if total_questions == 0:
+                return jsonify({'success': False, 'message': '至少需要设置一种题型的题目数量'}), 400
         
         # 验证题库中有足够的题目
         validation_errors = []
@@ -2611,6 +2998,9 @@ def save_test_settings():
             preset.allow_student_choice = allow_student_choice
             preset.short_answer_grading_method = short_answer_grading_method
             preset.fill_blank_grading_method = fill_blank_grading_method
+            preset.test_mode = test_mode
+            preset.paper_id = int(paper_id) if paper_id else None
+            preset.duration_minutes = int(duration_minutes) if duration_minutes else None
             message = f'预设 "{preset_name}" 更新成功'
         else:
             # 创建新预设
@@ -2634,7 +3024,10 @@ def save_test_settings():
                 short_answer_questions=short_answer_questions_json,
                 allow_student_choice=allow_student_choice,
                 short_answer_grading_method=short_answer_grading_method,
-                fill_blank_grading_method=fill_blank_grading_method
+                fill_blank_grading_method=fill_blank_grading_method,
+                test_mode=test_mode,
+                paper_id=int(paper_id) if paper_id else None,
+                duration_minutes=int(duration_minutes) if duration_minutes else None
             )
             db.session.add(preset)
             message = f'预设 "{preset_name}" 保存成功'
@@ -2794,7 +3187,10 @@ def get_test_preset(preset_id):
             'short_answer_questions': preset.short_answer_questions,
             'allow_student_choice': preset.allow_student_choice,
             'short_answer_grading_method': preset.short_answer_grading_method or 'manual',
-            'fill_blank_grading_method': preset.fill_blank_grading_method or 'manual'
+            'fill_blank_grading_method': preset.fill_blank_grading_method or 'manual',
+            'test_mode': getattr(preset, 'test_mode', 'question_bank') or 'question_bank',
+            'paper_id': getattr(preset, 'paper_id', None),
+            'duration_minutes': getattr(preset, 'duration_minutes', None)
         }
     })
 
@@ -2829,15 +3225,14 @@ def get_test_presets_public():
     """获取可供学生选择的测试预设列表（公开API）"""
     # 检查当前测试是否允许学生自选
     current_test = Test.query.filter_by(is_active=True).first()
-    if not current_test or not current_test.allow_student_choice:
-        return jsonify({'presets': []})
     
-    # 如果允许，返回所有预设
+    # 返回所有预设（包括试卷模式），每个预设均表示可用的测试
     presets = TestPreset.query.order_by(TestPreset.created_at.desc()).all()
     return jsonify({
         'presets': [{
             'id': preset.id,
-            'title': preset.title
+            'title': preset.title,
+            'test_mode': getattr(preset, 'test_mode', 'question_bank') or 'question_bank'
         } for preset in presets]
     })
 
@@ -2890,6 +3285,842 @@ def get_ai_grading_status():
             'details': config_message,
             'suggestion': '请检查config.py中的AI_GRADING_CONFIG配置'
         })
+
+# ==================== 试卷模式 API ====================
+
+@app.route('/api/paper_banks', methods=['GET', 'POST'])
+def manage_paper_banks():
+    """获取试卷库列表 / 创建试卷库"""
+    if 'role' not in session or session['role'] != 'teacher':
+        return jsonify({'success': False, 'message': '未授权'}), 403
+    
+    if request.method == 'GET':
+        banks = PaperBank.query.order_by(PaperBank.created_at.desc()).all()
+        return jsonify({
+            'success': True,
+            'banks': [{
+                'id': b.id,
+                'title': b.title,
+                'file_type': b.file_type,
+                'page_count': b.page_count,
+                'total_questions': b.total_questions,
+                'created_at': b.created_at.strftime('%Y-%m-%d %H:%M') if b.created_at else ''
+            } for b in banks]
+        })
+    
+    # POST - 创建试卷库
+    title = request.form.get('title', '').strip()
+    if not title:
+        return jsonify({'success': False, 'message': '请输入试卷标题'}), 400
+    
+    file_type = request.form.get('file_type', 'pdf')
+    
+    paper_bank = PaperBank(
+        title=title,
+        file_type=file_type,
+        teacher_id=session.get('user_id')
+    )
+    
+    # 上传试卷文件
+    paper_file = request.files.get('paper_file')
+    if paper_file and paper_file.filename:
+        paper_dir = os.path.join('uploads', 'papers', str(paper_bank.id if paper_bank.id else 'temp'))
+        os.makedirs(paper_dir, exist_ok=True)
+        ext = paper_file.filename.rsplit('.', 1)[-1].lower() if '.' in paper_file.filename else 'pdf'
+        paper_filename = f"paper.{ext}"
+        paper_path = os.path.join(paper_dir, paper_filename)
+        
+        db.session.flush()
+        paper_dir = os.path.join('uploads', 'papers', str(paper_bank.id))
+        os.makedirs(paper_dir, exist_ok=True)
+        paper_path = os.path.join(paper_dir, paper_filename)
+        paper_file.save(paper_path)
+        paper_bank.paper_path = paper_path
+        
+        # 如果是PDF，获取页数
+        if ext == 'pdf':
+            try:
+                from PyPDF2 import PdfReader
+                reader = PdfReader(paper_path)
+                paper_bank.page_count = len(reader.pages)
+            except Exception as e:
+                logger.warning(f"读取PDF页数失败: {e}")
+    
+    # 上传参考答案PDF
+    answer_file = request.files.get('answer_file')
+    if answer_file and answer_file.filename:
+        paper_dir = os.path.join('uploads', 'papers', str(paper_bank.id))
+        os.makedirs(paper_dir, exist_ok=True)
+        answer_path = os.path.join(paper_dir, 'answer.pdf')
+        answer_file.save(answer_path)
+        paper_bank.answer_path = answer_path
+    
+    # 上传答题卡Excel配置
+    excel_file = request.files.get('excel_file')
+    if excel_file and excel_file.filename:
+        try:
+            # 保存Excel文件
+            excel_path = os.path.join(paper_dir, 'config.xlsx')
+            excel_file.save(excel_path)
+            paper_bank.excel_path = excel_path
+            
+            df = pd.read_excel(excel_path)
+            config_list = []
+            for _, row in df.iterrows():
+                q = {
+                    'num': int(row.get('题号', 0)),
+                    'type': str(row.get('题型', '')),
+                    'options': str(row.get('选项', '')) if pd.notna(row.get('选项')) else '',
+                    'score': int(row.get('分值', 0)) if pd.notna(row.get('分值')) else 0,
+                    'answer': str(row.get('参考答案', '')) if pd.notna(row.get('参考答案')) else ''
+                }
+                if q['num'] > 0 and q['type']:
+                    config_list.append(q)
+            paper_bank.answer_config = json.dumps(config_list, ensure_ascii=False)
+            paper_bank.total_questions = len(config_list)
+        except Exception as e:
+            return jsonify({'success': False, 'message': f'Excel解析失败: {str(e)}'}), 400
+    
+    # 自动检测PDF题号位置
+    if paper_bank.paper_path and paper_bank.file_type == 'pdf':
+        try:
+            positions = detect_question_positions(paper_bank.paper_path, paper_bank.total_questions)
+            if positions:
+                paper_bank.question_positions = json.dumps(positions, ensure_ascii=False)
+        except Exception as e:
+            logger.warning(f"题号定位失败: {e}")
+    
+    db.session.add(paper_bank)
+    db.session.commit()
+    
+    return jsonify({
+        'success': True,
+        'message': '试卷导入成功',
+        'bank': {
+            'id': paper_bank.id,
+            'title': paper_bank.title,
+            'file_type': paper_bank.file_type,
+            'page_count': paper_bank.page_count,
+            'total_questions': paper_bank.total_questions
+        }
+    })
+
+
+def detect_question_positions(pdf_path, total_questions):
+    """检测PDF中题号位置"""
+    try:
+        from PyPDF2 import PdfReader
+        reader = PdfReader(pdf_path)
+        positions = []
+        
+        for page_num, page in enumerate(reader.pages):
+            text = page.extract_text()
+            if not text:
+                continue
+            lines = text.split('\n')
+            y_pos = 0
+            for line in lines:
+                y_pos += 15  # 估算行高
+                import re
+                matches = re.findall(r'(?:^|\s)(\d{1,3})[\.、．]\s', line)
+                for match in matches:
+                    num = int(match)
+                    if 1 <= num <= (total_questions or 999):
+                        positions.append({
+                            'num': num,
+                            'page': page_num + 1,
+                            'y': y_pos
+                        })
+        
+        positions.sort(key=lambda x: (x['page'], x['y']))
+        seen = set()
+        unique = []
+        for p in positions:
+            if p['num'] not in seen:
+                seen.add(p['num'])
+                unique.append(p)
+        return unique
+    except Exception as e:
+        logger.error(f"题号检测异常: {e}")
+        return []
+
+
+@app.route('/paper_bank/<int:bank_id>/edit', methods=['GET'])
+def edit_paper_bank(bank_id):
+    """编辑试卷参数页面（重新上传试卷和答题卡）"""
+    if 'role' not in session or session['role'] != 'teacher':
+        return redirect('/teacher/login')
+    
+    bank = PaperBank.query.get_or_404(bank_id)
+    answer_config = json.loads(bank.answer_config) if bank.answer_config else []
+    
+    return render_template('edit_paper_params.html', bank=bank, answer_config=answer_config)
+
+
+@app.route('/api/paper_preview', methods=['POST'])
+def paper_preview():
+    """上传临时文件进行预览"""
+    if 'role' not in session or session['role'] != 'teacher':
+        return jsonify({'success': False, 'message': '未登录'}), 401
+    
+    try:
+        title = request.form.get('title', '').strip()
+        paper_file = request.files.get('paper_file')
+        excel_file = request.files.get('excel_file')
+        
+        if not title or not paper_file or not excel_file:
+            return jsonify({'success': False, 'message': '缺少必要参数'}), 400
+        
+        preview_id = str(uuid.uuid4())
+        temp_dir = os.path.join(app.config['UPLOAD_FOLDER'], 'preview', preview_id)
+        os.makedirs(temp_dir, exist_ok=True)
+        
+        paper_path = os.path.join(temp_dir, 'paper.pdf')
+        paper_file.save(paper_path)
+        
+        excel_path = os.path.join(temp_dir, 'config.xlsx')
+        excel_file.save(excel_path)
+        
+        import pandas as pd
+        df = pd.read_excel(excel_path)
+        config_list = []
+        for _, row in df.iterrows():
+            q = {
+                'num': int(row.get('题号', 0)),
+                'type': str(row.get('题型', '')),
+                'options': str(row.get('选项', '')) if pd.notna(row.get('选项')) else '',
+                'score': int(row.get('分值', 0)) if pd.notna(row.get('分值')) else 0,
+                'answer': str(row.get('参考答案', '')) if pd.notna(row.get('参考答案')) else ''
+            }
+            if q['num'] > 0 and q['type']:
+                config_list.append(q)
+        
+        config_path = os.path.join(temp_dir, 'config.json')
+        with open(config_path, 'w', encoding='utf-8') as f:
+            json.dump({'title': title, 'questions': config_list}, f, ensure_ascii=False)
+        
+        return jsonify({'success': True, 'preview_id': preview_id})
+    
+    except Exception as e:
+        logger.error(f"预览失败: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@app.route('/paper_preview/<preview_id>', methods=['GET'])
+def paper_preview_page(preview_id):
+    """预览页面"""
+    if 'role' not in session or session['role'] != 'teacher':
+        return redirect('/teacher/login')
+    
+    temp_dir = os.path.join(app.config['UPLOAD_FOLDER'], 'preview', preview_id)
+    config_path = os.path.join(temp_dir, 'config.json')
+    
+    if not os.path.exists(config_path):
+        return "预览已过期", 404
+    
+    with open(config_path, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    
+    return render_template('paper_preview.html', preview_id=preview_id, title=data['title'], questions=data['questions'])
+
+
+@app.route('/paper_preview/<preview_id>/save', methods=['POST'])
+def save_preview_config(preview_id):
+    """保存修改后的答题卡配置"""
+    if 'role' not in session or session['role'] != 'teacher':
+        return jsonify({'success': False, 'message': '未登录'}), 401
+    
+    try:
+        questions = request.json.get('questions', [])
+        
+        temp_dir = os.path.join(app.config['UPLOAD_FOLDER'], 'preview', preview_id)
+        config_path = os.path.join(temp_dir, 'config.json')
+        
+        if not os.path.exists(config_path):
+            return jsonify({'success': False, 'message': '预览已过期'}), 404
+        
+        with open(config_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        
+        data['questions'] = questions
+        
+        with open(config_path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False)
+        
+        return jsonify({'success': True, 'message': '保存成功'})
+    
+    except Exception as e:
+        logger.error(f"保存预览配置失败: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@app.route('/preview_paper/<preview_id>', methods=['GET'])
+def preview_paper_file(preview_id):
+    """提供预览的PDF文件"""
+    if 'role' not in session or session['role'] != 'teacher':
+        return redirect('/teacher/login')
+    
+    temp_dir = os.path.join(app.config['UPLOAD_FOLDER'], 'preview', preview_id)
+    paper_path = os.path.join(temp_dir, 'paper.pdf')
+    
+    if not os.path.exists(paper_path):
+        return "文件不存在", 404
+    
+    return send_file(paper_path, mimetype='application/pdf')
+
+
+@app.route('/api/paper_banks/<int:bank_id>', methods=['GET', 'DELETE', 'PUT'])
+def manage_single_paper_bank(bank_id):
+    """获取/删除/更新单个试卷库"""
+    if 'role' not in session or session['role'] != 'teacher':
+        return jsonify({'success': False, 'message': '未授权'}), 403
+    
+    bank = PaperBank.query.get_or_404(bank_id)
+    
+    if request.method == 'GET':
+        return jsonify({
+            'success': True,
+            'bank': {
+                'id': bank.id,
+                'title': bank.title,
+                'file_type': bank.file_type,
+                'page_count': bank.page_count,
+                'total_questions': bank.total_questions,
+                'answer_config': json.loads(bank.answer_config) if bank.answer_config else [],
+                'question_positions': json.loads(bank.question_positions) if bank.question_positions else [],
+                'created_at': bank.created_at.strftime('%Y-%m-%d %H:%M') if bank.created_at else ''
+            }
+        })
+    
+    if request.method == 'PUT':
+        # 更新试卷信息
+        data = request.get_json()
+        if 'title' in data:
+            bank.title = data['title']
+        
+        if 'answer_config' in data:
+            bank.answer_config = json.dumps(data['answer_config'], ensure_ascii=False)
+            bank.total_questions = len(data['answer_config'])
+        
+        db.session.commit()
+        return jsonify({'success': True, 'message': '更新成功'})
+    
+    # DELETE
+    try:
+        import shutil
+        if bank.paper_path:
+            bank_dir = os.path.dirname(bank.paper_path)
+            if os.path.exists(bank_dir):
+                shutil.rmtree(bank_dir)
+        db.session.delete(bank)
+        db.session.commit()
+        return jsonify({'success': True, 'message': '删除成功'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': f'删除失败: {str(e)}'}), 500
+
+
+@app.route('/api/paper_banks/<int:bank_id>/update', methods=['POST'])
+def update_paper_bank(bank_id):
+    """更新试卷参数（重新上传试卷和答题卡）"""
+    if 'role' not in session or session['role'] != 'teacher':
+        return jsonify({'success': False, 'message': '未授权'}), 403
+    
+    bank = PaperBank.query.get_or_404(bank_id)
+    
+    try:
+        title = request.form.get('title')
+        if title:
+            bank.title = title
+        
+        paper_file = request.files.get('paper_file')
+        if paper_file and paper_file.filename:
+            paper_dir = os.path.join('uploads', 'papers', str(bank.id))
+            os.makedirs(paper_dir, exist_ok=True)
+            ext = paper_file.filename.rsplit('.', 1)[-1].lower() if '.' in paper_file.filename else 'pdf'
+            paper_filename = f"paper.{ext}"
+            paper_path = os.path.join(paper_dir, paper_filename)
+            paper_file.save(paper_path)
+            bank.paper_path = paper_path
+            bank.file_type = ext
+            
+            if ext == 'pdf':
+                try:
+                    from PyPDF2 import PdfReader
+                    reader = PdfReader(paper_path)
+                    bank.page_count = len(reader.pages)
+                except Exception as e:
+                    logger.warning(f"读取PDF页数失败: {e}")
+        
+        excel_file = request.files.get('excel_file')
+        if excel_file and excel_file.filename:
+            try:
+                import pandas as pd
+                df = pd.read_excel(excel_file)
+                config_list = []
+                for _, row in df.iterrows():
+                    q = {
+                        'num': int(row.get('题号', 0)),
+                        'type': str(row.get('题型', '')),
+                        'options': str(row.get('选项', '')) if pd.notna(row.get('选项')) else '',
+                        'score': int(row.get('分值', 0)) if pd.notna(row.get('分值')) else 0,
+                        'answer': str(row.get('参考答案', '')) if pd.notna(row.get('参考答案')) else ''
+                    }
+                    if q['num'] > 0 and q['type']:
+                        config_list.append(q)
+                bank.answer_config = json.dumps(config_list, ensure_ascii=False)
+                bank.total_questions = len(config_list)
+            except Exception as e:
+                logger.error(f"解析Excel失败: {e}")
+                return jsonify({'success': False, 'message': f'Excel解析失败: {str(e)}'})
+        
+        db.session.commit()
+        return jsonify({'success': True, 'message': '更新成功'})
+    
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"更新试卷失败: {e}")
+        return jsonify({'success': False, 'message': f'更新失败: {str(e)}'}), 500
+
+
+@app.route('/api/paper_banks/<int:bank_id>/paper', methods=['GET'])
+def serve_paper_file(bank_id):
+    """提供试卷文件给前端查看"""
+    bank = PaperBank.query.get_or_404(bank_id)
+    if not bank.paper_path or not os.path.exists(bank.paper_path):
+        return jsonify({'success': False, 'message': '文件不存在'}), 404
+    return send_file(bank.paper_path)
+
+
+@app.route('/api/paper_excel_template')
+def download_excel_template():
+    """下载答题卡Excel模板"""
+    if 'role' not in session or session['role'] != 'teacher':
+        return jsonify({'success': False, 'message': '未授权'}), 403
+    
+    import pandas as pd
+    template_data = {
+        '题号': [1, 2, 3, 4, 5],
+        '题型': ['单选', '多选', '判断', '填空', '简答'],
+        '选项': ['独立|交流|依赖|开放', 'A|B|C|D', '对|错', '', ''],
+        '分值': [4, 6, 2, 5, 10],
+        '参考答案': ['B', 'ABC', '对|正确|是', '牛顿|Newton、苹果|apple', '见参考答案'],
+        '备注': ['', '', '判断题答案：对、正确、是、√、true、1 或 错、错误、否、×、false、0', '填空题规则：不同空用"、"隔开（全角顿号），同一空多个答案用"|"分隔，如"in|IN、i、1|一"表示第1空填in或IN都正确', '']
+    }
+    df = pd.DataFrame(template_data)
+    
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='答题卡配置')
+    output.seek(0)
+    
+    return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                     as_attachment=True, download_name='答题卡配置模板.xlsx')
+
+
+# ==================== 试卷模式 - 学生端 API ====================
+
+@app.route('/student/paper_test', methods=['GET'])
+def student_paper_test():
+    """学生试卷测试页面"""
+    if 'role' not in session or session['role'] != 'student':
+        return redirect(url_for('index'))
+    
+    preset_id = request.args.get('preset_id')
+    if not preset_id:
+        flash('请选择测试')
+        return redirect(url_for('student_start'))
+    
+    preset = TestPreset.query.get_or_404(int(preset_id))
+    if preset.test_mode != 'paper':
+        flash('该预设不是试卷模式')
+        return redirect(url_for('student_start'))
+    
+    if not preset.paper_id:
+        flash('该预设未关联试卷')
+        return redirect(url_for('student_start'))
+    
+    paper = PaperBank.query.get(preset.paper_id)
+    if not paper:
+        flash('试卷不存在')
+        return redirect(url_for('student_start'))
+    
+    student_id = session.get('user_id') or session.get('student_id')
+    if not student_id:
+        flash('请先登录')
+        return redirect(url_for('student_start'))
+    
+    student = User.query.get(student_id)
+    
+    # 检查是否已有记录（防止重复开始）
+    existing = PaperExamRecord.query.filter_by(
+        preset_id=preset.id,
+        student_id=student.id,
+        is_submitted=False
+    ).first()
+    
+    if existing:
+        exam_id = existing.id
+        existing.auto_save_at = datetime.utcnow()
+        db.session.commit()
+    else:
+        exam = PaperExamRecord(
+            preset_id=preset.id,
+            student_id=student.id,
+            student_name=student.username,
+            class_number=getattr(student, 'class_number', ''),
+            ip_address=request.remote_addr,
+            created_at=datetime.utcnow()
+        )
+        db.session.add(exam)
+        db.session.commit()
+        exam_id = exam.id
+    
+    answer_config = json.loads(paper.answer_config) if paper.answer_config else []
+    
+    return render_template('paper_test.html',
+                         preset=preset,
+                         paper=paper,
+                         exam_id=exam_id,
+                         answer_config=answer_config,
+                         duration_minutes=preset.duration_minutes or 120,
+                         student_name=student.username)
+
+
+@app.route('/api/paper_exam/<int:exam_id>/auto_save', methods=['POST'])
+def auto_save_paper_exam(exam_id):
+    """自动保存试卷作答"""
+    if 'role' not in session or session['role'] != 'student':
+        return jsonify({'success': False, 'message': '未授权'}), 403
+    
+    user_id = session.get('user_id') or session.get('student_id')
+    if not user_id:
+        return jsonify({'success': False, 'message': '未登录'}), 401
+    
+    exam = PaperExamRecord.query.get_or_404(exam_id)
+    if exam.student_id != user_id:
+        return jsonify({'success': False, 'message': '无权操作'}), 403
+    
+    if exam.is_submitted:
+        return jsonify({'success': False, 'message': '试卷已提交'}), 400
+    
+    data = request.get_json()
+    exam.answers_json = json.dumps(data.get('answers', {}), ensure_ascii=False)
+    exam.auto_save_at = datetime.utcnow()
+    db.session.commit()
+    
+    return jsonify({'success': True, 'message': '已自动保存'})
+
+
+@app.route('/api/paper_exam/<int:exam_id>/submit', methods=['POST'])
+def submit_paper_exam(exam_id):
+    """提交试卷"""
+    if 'role' not in session or session['role'] != 'student':
+        return jsonify({'success': False, 'message': '未授权'}), 403
+    
+    user_id = session.get('user_id') or session.get('student_id')
+    if not user_id:
+        return jsonify({'success': False, 'message': '未登录'}), 401
+    
+    exam = PaperExamRecord.query.get_or_404(exam_id)
+    if exam.student_id != user_id:
+        return jsonify({'success': False, 'message': '无权操作'}), 403
+    
+    if exam.is_submitted:
+        return jsonify({'success': False, 'message': '试卷已提交'}), 400
+    
+    data = request.get_json()
+    answers = data.get('answers', {})
+    duration_used = data.get('duration_used', 0)
+    
+    exam.answers_json = json.dumps(answers, ensure_ascii=False)
+    exam.is_submitted = True
+    exam.submitted_at = datetime.utcnow()
+    exam.duration_used = duration_used
+    
+    # 开始自动批改
+    preset = TestPreset.query.get(exam.preset_id)
+    paper = PaperBank.query.get(preset.paper_id) if preset else None
+    answer_config = json.loads(paper.answer_config) if paper and paper.answer_config else []
+    
+    total_score = 0.0
+    ai_grading_results = {}
+    
+    for q_config in answer_config:
+        q_num = str(q_config['num'])
+        student_answer = answers.get(q_num, '')
+        q_type = q_config['type']
+        q_score = q_config['score']
+        q_correct = str(q_config.get('answer', ''))
+        
+        if q_type == '单选':
+            # 选择题对比答案时忽略大小写
+            if student_answer.strip().upper() == q_correct.strip().upper():
+                total_score += q_score
+                ai_grading_results[q_num] = {'score': q_score, 'feedback': '正确', 'success': True}
+            else:
+                ai_grading_results[q_num] = {'score': 0, 'feedback': f'正确答案: {q_correct}', 'success': True}
+        
+        elif q_type == '多选':
+            # 多选题忽略参考答案与填写答案之间间隔符号，忽略大小写
+            def normalize_multi(ans):
+                ans = ans.replace(',', '').replace('，', '').replace('、', '').replace(' ', '').replace('/', '').replace('\\', '')
+                return set(c.upper() for c in ans if c in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ')
+            
+            correct_set = normalize_multi(q_correct)
+            student_set = normalize_multi(student_answer)
+            
+            if student_set == correct_set:
+                total_score += q_score
+                ai_grading_results[q_num] = {'score': q_score, 'feedback': '正确', 'success': True}
+            elif student_set and student_set.issubset(correct_set):
+                partial_score = q_score / 2
+                total_score += partial_score
+                ai_grading_results[q_num] = {'score': partial_score, 'feedback': f'部分正确，正确答案: {q_correct}', 'success': True}
+            else:
+                ai_grading_results[q_num] = {'score': 0, 'feedback': f'正确答案: {q_correct}', 'success': True}
+        
+        elif q_type == '判断':
+            # 判断题参考答案为对和错，支持多种表示方式
+            def normalize_tf(ans):
+                ans = ans.strip().lower()
+                true_values = {'对', '正确', '是', '√', 'true', '1', '对的', '是的', '真', 't'}
+                false_values = {'错', '错误', '否', '×', 'false', '0', '错的', '不是', '假', 'f'}
+                if ans in true_values:
+                    return '对'
+                elif ans in false_values:
+                    return '错'
+                return ans
+            
+            if normalize_tf(student_answer) == normalize_tf(q_correct):
+                total_score += q_score
+                ai_grading_results[q_num] = {'score': q_score, 'feedback': '正确', 'success': True}
+            else:
+                ai_grading_results[q_num] = {'score': 0, 'feedback': f'正确答案: {q_correct}', 'success': True}
+        
+        elif q_type == '填空':
+            # 填空题多空时用"/"隔开，同一空多个正确答案用"|"分隔
+            # 示例："in|IN、i、1|一" 表示第1空填in或IN都正确，第2空填i正确，第3空填1或一都正确
+            def split_blanks(text):
+                return text.split('、')
+            
+            def split_alternatives(text):
+                return [a.strip().lower() for a in text.split('|') if a.strip()]
+            
+            correct_blanks = split_blanks(q_correct)
+            student_blanks = split_blanks(student_answer)
+            
+            if len(correct_blanks) > 0:
+                score_per_fill = q_score / len(correct_blanks)
+                earned_score = 0
+                
+                for i in range(len(correct_blanks)):
+                    if i < len(student_blanks):
+                        student_ans = student_blanks[i].strip().lower()
+                        if student_ans:
+                            correct_alternatives = split_alternatives(correct_blanks[i])
+                            if student_ans in correct_alternatives:
+                                earned_score += score_per_fill
+                
+                earned_score = round(earned_score * 10) / 10  # 保留一位小数
+                total_score += earned_score
+                
+                if earned_score == q_score:
+                    ai_grading_results[q_num] = {'score': earned_score, 'feedback': '正确', 'success': True}
+                elif earned_score > 0:
+                    ai_grading_results[q_num] = {'score': earned_score, 'feedback': f'部分正确，正确答案: {q_correct}', 'success': True}
+                elif student_answer.strip():
+                    ai_grading_results[q_num] = {'score': 0, 'feedback': f'正确答案: {q_correct}', 'success': True}
+                else:
+                    ai_grading_results[q_num] = {'score': 0, 'feedback': '未作答', 'success': True}
+        
+        elif q_type == '简答' and student_answer.strip():
+            # AI批改
+            try:
+                ai_service = get_ai_grading_service()
+                if ai_service.is_enabled():
+                    success, ai_result = ai_service.grade_answer(
+                        question=f"第{q_num}题（简答题）",
+                        reference_answer=f"参考答案: {q_correct}",
+                        student_answer=student_answer,
+                        max_score=q_score,
+                        question_type='short_answer'
+                    )
+                    if success:
+                        actual_score = min(ai_result['score'], q_score)
+                        total_score += actual_score
+                        ai_grading_results[q_num] = {
+                            'score': actual_score,
+                            'feedback': ai_result.get('feedback', ''),
+                            'success': True
+                        }
+                    else:
+                        ai_grading_results[q_num] = {
+                            'score': 0,
+                            'feedback': f"AI批改失败: {ai_result.get('error_message', '')}",
+                            'success': False
+                        }
+                else:
+                    ai_grading_results[q_num] = {
+                        'score': 0,
+                        'feedback': 'AI未配置，需人工批改',
+                        'success': False
+                    }
+            except Exception as e:
+                logger.error(f"简答题AI批改异常: {e}")
+                ai_grading_results[q_num] = {
+                    'score': 0,
+                    'feedback': f'批改异常: {str(e)}',
+                    'success': False
+                }
+        elif q_type == '简答' and not student_answer.strip():
+            ai_grading_results[q_num] = {'score': 0, 'feedback': '未作答', 'success': True}
+    
+    exam.total_score = total_score
+    exam.ai_grading_results = json.dumps(ai_grading_results, ensure_ascii=False)
+    db.session.commit()
+    
+    return jsonify({
+        'success': True,
+        'message': '试卷已提交',
+        'total_score': total_score
+    })
+
+
+@app.route('/api/paper_exam/<int:exam_id>/load', methods=['GET'])
+def load_paper_exam_answers(exam_id):
+    """加载已保存的作答"""
+    if 'role' not in session or session['role'] != 'student':
+        return jsonify({'success': False, 'message': '未授权'}), 403
+    
+    user_id = session.get('user_id') or session.get('student_id')
+    if not user_id:
+        return jsonify({'success': False, 'message': '未登录'}), 401
+    
+    exam = PaperExamRecord.query.get_or_404(exam_id)
+    if exam.student_id != user_id:
+        return jsonify({'success': False, 'message': '无权操作'}), 403
+    
+    answers = json.loads(exam.answers_json) if exam.answers_json else {}
+    
+    return jsonify({
+        'success': True,
+        'answers': answers,
+        'is_submitted': exam.is_submitted,
+        'auto_save_at': exam.auto_save_at.strftime('%Y-%m-%d %H:%M:%S') if exam.auto_save_at else None
+    })
+
+
+# ==================== 试卷模式 - 教师批改 API ====================
+
+@app.route('/paper_exam_results')
+def paper_exam_results():
+    """试卷模式成绩查看页面"""
+    if 'role' not in session or session['role'] != 'teacher':
+        return redirect(url_for('index'))
+    
+    preset_id = request.args.get('preset_id', type=int)
+    
+    presets = TestPreset.query.filter_by(test_mode='paper').order_by(TestPreset.created_at.desc()).all()
+    
+    results = []
+    if preset_id:
+        exams = PaperExamRecord.query.filter_by(preset_id=preset_id, is_submitted=True)\
+            .order_by(PaperExamRecord.submitted_at.desc()).all()
+        
+        preset = TestPreset.query.get(preset_id)
+        paper = PaperBank.query.get(preset.paper_id) if preset else None
+        answer_config = json.loads(paper.answer_config) if paper and paper.answer_config else []
+        total_possible = sum(q['score'] for q in answer_config) if answer_config else 0
+        
+        for exam in exams:
+            ai_results = json.loads(exam.ai_grading_results) if exam.ai_grading_results else {}
+            needs_review = any(
+                r.get('success') == False
+                for r in ai_results.values()
+            )
+            
+            results.append({
+                'exam_id': exam.id,
+                'student_name': exam.student_name,
+                'class_number': exam.class_number,
+                'total_score': exam.total_score,
+                'total_possible': total_possible,
+                'submitted_at': exam.submitted_at.strftime('%Y-%m-%d %H:%M') if exam.submitted_at else '',
+                'duration_used': exam.duration_used,
+                'needs_review': needs_review
+            })
+    
+    return render_template('paper_exam_results.html',
+                         presets=presets,
+                         selected_preset_id=preset_id,
+                         results=results)
+
+
+@app.route('/api/paper_exam/<int:exam_id>/detail')
+def paper_exam_detail(exam_id):
+    """获取试卷考试详情（教师和学生均可访问）"""
+    exam = PaperExamRecord.query.get_or_404(exam_id)
+    
+    # 教师可以查看任何记录，学生只能查看自己的记录
+    if 'role' in session and session['role'] == 'teacher':
+        pass  # 教师有全部权限
+    elif 'student_id' in session:
+        if exam.student_id != session['student_id']:
+            return jsonify({'success': False, 'message': '无权查看'}), 403
+    else:
+        return jsonify({'success': False, 'message': '未授权'}), 403
+    
+    preset = TestPreset.query.get(exam.preset_id)
+    paper = PaperBank.query.get(preset.paper_id) if preset else None
+    
+    answers = json.loads(exam.answers_json) if exam.answers_json else {}
+    answer_config = json.loads(paper.answer_config) if paper and paper.answer_config else []
+    ai_results = json.loads(exam.ai_grading_results) if exam.ai_grading_results else {}
+    
+    return jsonify({
+        'success': True,
+        'exam': {
+            'id': exam.id,
+            'student_name': exam.student_name,
+            'class_number': exam.class_number,
+            'total_score': exam.total_score,
+            'submitted_at': exam.submitted_at.strftime('%Y-%m-%d %H:%M') if exam.submitted_at else '',
+            'duration_used': exam.duration_used,
+            'paper_title': paper.title if paper else ''
+        },
+        'answers': answers,
+        'answer_config': answer_config,
+        'ai_results': ai_results,
+    })
+
+
+@app.route('/api/paper_exam/<int:exam_id>/update_score', methods=['POST'])
+def update_paper_exam_score(exam_id):
+    """教师手动修改分数"""
+    if 'role' not in session or session['role'] != 'teacher':
+        return jsonify({'success': False, 'message': '未授权'}), 403
+    
+    exam = PaperExamRecord.query.get_or_404(exam_id)
+    data = request.get_json()
+    
+    question_num = str(data.get('question_num'))
+    new_score = data.get('score', 0)
+    feedback = data.get('feedback', '')
+    
+    ai_results = json.loads(exam.ai_grading_results) if exam.ai_grading_results else {}
+    if question_num in ai_results:
+        old_score = ai_results[question_num].get('score', 0)
+        ai_results[question_num]['score'] = new_score
+        ai_results[question_num]['feedback'] = feedback
+        ai_results[question_num]['manual_reviewed'] = True
+        exam.total_score = exam.total_score - old_score + new_score
+        exam.ai_grading_results = json.dumps(ai_results, ensure_ascii=False)
+        db.session.commit()
+        return jsonify({'success': True, 'total_score': exam.total_score})
+    
+    return jsonify({'success': False, 'message': '题目不存在'}), 404
+
 
 @app.route('/logout')
 def logout():

@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>编辑试卷参数</title>
+    <link href="{{ url_for('static', filename='bootstrap/css/bootstrap.min.css') }}" rel="stylesheet">
+</head>
+<body class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="mb-0">编辑试卷参数</h2>
+                </div>
+                <div class="card-body">
+                    <form id="editPaperForm" enctype="multipart/form-data">
+                        <div class="mb-3">
+                            <label for="paperTitle" class="form-label">试卷标题</label>
+                            <input type="text" class="form-control" id="paperTitle" value="{{ bank.title }}" required>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">📄 试卷文件（PDF/图片）</label>
+                            <input type="file" class="form-control form-control-sm" id="paperFile" accept=".pdf,.png,.jpg,.jpeg">
+                            {% if bank.paper_path %}
+                            <small class="text-muted mt-1 d-block">当前文件: {{ bank.paper_path.split('/')[-1] }} ({{ bank.file_type.upper() }}, {{ bank.page_count }}页)</small>
+                            {% endif %}
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">📋 答题卡Excel配置</label>
+                            <div class="d-flex gap-2">
+                                <input type="file" class="form-control form-control-sm" id="excelFile" accept=".xlsx">
+                                <a href="{{ url_for('download_excel_template') }}" class="btn btn-sm btn-outline-secondary" title="下载Excel模板">
+                                    <i class="bi bi-download"></i> 模板
+                                </a>
+                            </div>
+                            {% if bank.answer_config %}
+                            <small class="text-muted mt-1 d-block">当前配置: {{ bank.total_questions }} 道题目</small>
+                            {% endif %}
+                            {% if bank.excel_path %}
+                            <small class="text-muted mt-1 d-block">配置文件: {{ bank.excel_path.split('/')[-1] }}</small>
+                            {% endif %}
+                        </div>
+                        
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-primary flex-grow-1">保存修改</button>
+                            <button type="button" class="btn btn-secondary" onclick="window.close()">取消</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        document.getElementById('editPaperForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData();
+            formData.append('title', document.getElementById('paperTitle').value);
+            
+            const paperFile = document.getElementById('paperFile').files[0];
+            if (paperFile) {
+                formData.append('paper_file', paperFile);
+            }
+            
+            const excelFile = document.getElementById('excelFile').files[0];
+            if (excelFile) {
+                formData.append('excel_file', excelFile);
+            }
+            
+            fetch(`/api/paper_banks/{{ bank.id }}/update`, {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('保存成功');
+                    window.close();
+                } else {
+                    alert('保存失败: ' + data.message);
+                }
+            })
+            .catch(error => {
+                alert('保存失败: ' + error.message);
+            });
+        });
+    </script>
+</body>
+</html>

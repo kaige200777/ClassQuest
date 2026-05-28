@@ -19,11 +19,10 @@ def check_ai_config():
         enabled, message = ai_service.get_config_status()
         
         if not enabled:
-            print(f"✗ AI批改功能未配置: {message}")
+            print(f"[ERR] AI批改功能未配置: {message}")
             print("  提示: 请在config.py中正确配置AI_GRADING_CONFIG")
             return
         
-        # 配置项正确，测试API连接
         provider = ai_service.config.get('provider', 'unknown')
         model = ai_service.config.get('model', 'unknown')
         
@@ -31,14 +30,14 @@ def check_ai_config():
         connection_ok, connection_msg = ai_service.test_connection()
         
         if connection_ok:
-            print(f"\r✓ AI批改功能已配置并测试通过 ({provider}/{model})")
+            print(f"\r[OK] AI批改功能已配置并测试通过 ({provider}/{model})")
         else:
-            print(f"\r✗ AI API连接失败: {connection_msg}")
+            print(f"\r[ERR] AI API连接失败: {connection_msg}")
             print(f"  配置: {provider}/{model}")
             print("  提示: 请检查API密钥是否正确，或网络连接是否正常")
             
     except Exception as e:
-        print(f"✗ AI配置检测失败: {str(e)}")
+        print(f"[ERR] AI配置检测失败: {str(e)}")
 
 if __name__ == "__main__":
     # 初始化数据库

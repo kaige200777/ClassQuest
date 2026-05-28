@@ -41,7 +41,7 @@
                             </select>
                         </div>
                         <div class="d-flex gap-2">
-                            <button type="submit" class="btn btn-primary flex-grow-1" id="startBtn">开始学习</button>
+                            <button type="submit" class="btn btn-primary flex-grow-1" id="startBtn" disabled>开始学习</button>
                             <button type="button" class="btn btn-secondary" id="historyBtn" disabled>历史记录</button>
                         </div>
                     </form>
@@ -51,9 +51,11 @@
     </div>
     
     <script>
-        // 页面加载时检查是否允许学生自选测试内容
+        let allowStudentChoice = false;
+
         document.addEventListener('DOMContentLoaded', function() {
             checkTestSettings();
+            setupFormValidation();
             setupHistoryButton();
         });
 
@@ -61,14 +63,16 @@
             fetch('/api/current_test_settings')
                 .then(response => response.json())
                 .then(data => {
-                    if (data.allow_student_choice) {
-                        // 允许学生自选，显示下拉框并加载预设列表
+                    allowStudentChoice = data.allow_student_choice || false;
+                    
+                    if (allowStudentChoice) {
                         document.getElementById('testContentDiv').style.display = 'block';
                         loadTestPresets();
                     } else {
-                        // 不允许学生自选，隐藏下拉框
                         document.getElementById('testContentDiv').style.display = 'none';
                     }
+                    
+                    updateStartButtonState();
                 })
                 .catch(error => {
                     console.error('获取测试设置失败:', error);
@@ -96,12 +100,36 @@
                 });
         }
 
+        function setupFormValidation() {
+            const nameInput = document.getElementById('name');
+            const classInput = document.getElementById('class_number');
+            const testContentSelect = document.getElementById('test_content');
+            const startBtn = document.getElementById('startBtn');
+
+            function updateStartButtonState() {
+                const name = nameInput.value.trim();
+                const classNumber = classInput.value.trim();
+                const testContent = testContentSelect.value;
+                
+                let canSubmit = name && classNumber;
+                
+                if (allowStudentChoice) {
+                    canSubmit = canSubmit && testContent;
+                }
+                
+                startBtn.disabled = !canSubmit;
+            }
+
+            nameInput.addEventListener('input', updateStartButtonState);
+            classInput.addEventListener('input', updateStartButtonState);
+            testContentSelect.addEventListener('change', updateStartButtonState);
+        }
+
         function setupHistoryButton() {
             const nameInput = document.getElementById('name');
             const classInput = document.getElementById('class_number');
             const historyBtn = document.getElementById('historyBtn');
 
-            // 监听输入变化，检查是否有历史记录
             function checkHistory() {
                 const name = nameInput.value.trim();
                 const classNumber = classInput.value.trim();
@@ -134,17 +162,14 @@
                 }
             }
 
-            // 添加输入事件监听
             nameInput.addEventListener('input', checkHistory);
             classInput.addEventListener('input', checkHistory);
 
-            // 处理历史记录按钮点击事件
             historyBtn.addEventListener('click', function() {
                 const name = nameInput.value.trim();
                 const classNumber = classInput.value.trim();
                 
                 if (name && classNumber) {
-                    // 创建一个隐藏表单提交，模拟登录并跳转到学生仪表板
                     const form = document.createElement('form');
                     form.method = 'POST';
                     form.action = '/student/history_login';
@@ -165,16 +190,7 @@
                     form.submit();
                 }
             });
-    }
-    
-    // 防止表单重复提交
-    document.getElementById('studentForm').addEventListener('submit', function(e) {
-        const startBtn = document.getElementById('startBtn');
-        startBtn.disabled = true;
-        startBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 处理中...';
-    });
+        }
     </script>
-    
-    <script src="{{ url_for('static', filename='bootstrap/js/bootstrap.bundle.min.js') }}"></script>
 </body>
-</html> 
+</html>
