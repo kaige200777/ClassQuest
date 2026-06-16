@@ -504,30 +504,42 @@ def student_start():
                 flash('请选择测试内容后开始')
                 return render_template('student_start.html')
             else:
-                # 如果没有设置允许学生自选，自动查找最新保存的测试内容
-                # 优先查找同名的试卷模式预设
+                # 如果没有设置允许学生自选，优先使用当前激活的测试配置
                 if current_test:
-                    paper_preset = TestPreset.query.filter_by(title=current_test.title, test_mode='paper').first()
-                    if paper_preset:
-                        test_content = str(paper_preset.id)
-                        preset = paper_preset
+                    # 先检查当前激活的测试是否有题目
+                    has_questions = (current_test.single_choice_count or 0) + \
+                                   (current_test.multiple_choice_count or 0) + \
+                                   (current_test.true_false_count or 0) + \
+                                   (current_test.fill_blank_count or 0) + \
+                                   (current_test.short_answer_count or 0) > 0
+                    
+                    if has_questions:
+                        # 当前测试有题目，直接使用，不设置test_content
+                        pass
                     else:
-                        # 查找最新的试卷模式预设
-                        paper_preset = TestPreset.query.filter_by(test_mode='paper').order_by(TestPreset.created_at.desc()).first()
+                        # 当前测试没有题目，尝试查找试卷模式预设
+                        # 优先查找同名的试卷模式预设
+                        paper_preset = TestPreset.query.filter_by(title=current_test.title, test_mode='paper').first()
                         if paper_preset:
                             test_content = str(paper_preset.id)
                             preset = paper_preset
-            
-            # 如果还是没有找到预设，检查激活的测试是否有题目
-            if not test_content and current_test:
-                has_questions = (current_test.single_choice_count or 0) + \
-                               (current_test.multiple_choice_count or 0) + \
-                               (current_test.true_false_count or 0) + \
-                               (current_test.fill_blank_count or 0) + \
-                               (current_test.short_answer_count or 0) > 0
-                
-                if not has_questions:
-                    # 如果激活的测试没有题目，查找可用的测试预设
+                        else:
+                            # 查找最新的试卷模式预设
+                            paper_preset = TestPreset.query.filter_by(test_mode='paper').order_by(TestPreset.created_at.desc()).first()
+                            if paper_preset:
+                                test_content = str(paper_preset.id)
+                                preset = paper_preset
+                            else:
+                                # 查找任意可用的测试预设
+                                latest_preset = TestPreset.query.order_by(TestPreset.created_at.desc()).first()
+                                if latest_preset:
+                                    test_content = str(latest_preset.id)
+                                    preset = latest_preset
+                                else:
+                                    flash('当前没有可用的测试，请联系管理员')
+                                    return render_template('student_start.html')
+                else:
+                    # 没有激活的测试，查找可用的测试预设
                     latest_preset = TestPreset.query.order_by(TestPreset.created_at.desc()).first()
                     if latest_preset:
                         test_content = str(latest_preset.id)
