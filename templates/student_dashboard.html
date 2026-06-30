@@ -212,6 +212,8 @@
                     html += '<span class="badge bg-' + (score >= maxScore ? 'success' : 'secondary') + '">得分: ' + score + '/' + maxScore + '</span>';
                     html += '</div><div class="card-body">';
                     html += '<p><strong>你的作答：</strong>' + (studentAnswer || '<span class="text-muted">未作答</span>') + '</p>';
+                    html += '<p><strong>正确答案：</strong>' + (q.answer || '<span class="text-muted">无</span>') + '</p>';
+                    if (q.explanation) html += '<p><strong>答案解析：</strong>' + q.explanation + '</p>';
                     if (aiResult.feedback) html += '<p><strong>批改反馈：</strong>' + aiResult.feedback + '</p>';
                     html += '</div></div>';
                 });

@@ -39,7 +39,7 @@ AI_GRADING_CONFIG = {
     'provider': 'openai',
     
     # API密钥 - 请填写您的API Key
-    'api_key': 'sk-e8de4f86a5b54ed7a17f338e1db658db',  # 例如: 'sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+    'api_key': 'sk-76b54836879e44c290100ee677bc02be',  # 例如: 'sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
     
     # API基础URL (可选，某些提供商需要)
     'base_url': 'https://api.deepseek.com',  # 例如: 'https://api.openai.com/v1' 或自定义代理地址

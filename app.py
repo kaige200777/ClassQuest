@@ -15,10 +15,24 @@ from werkzeug.utils import secure_filename
 import uuid
 from ai_grading_service import get_ai_grading_service
 import logging
+import subprocess
+import sys
 
 # 配置日志
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+try:
+    from PyPDF2 import PdfReader
+    logger.info("PyPDF2 导入成功")
+except ImportError as e:
+    logger.warning(f"PyPDF2 导入失败: {e}")
+    try:
+        subprocess.check_call([sys.executable, '-m', 'pip', 'install', 'PyPDF2==3.0.1'])
+        from PyPDF2 import PdfReader
+        logger.info("PyPDF2 安装并导入成功")
+    except Exception as install_error:
+        logger.error(f"PyPDF2 安装失败: {install_error}")
 
 # --- 图片上传配置 ---
 # 允许的扩展名
@@ -45,6 +59,12 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your-secret-key'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(os.path.dirname(os.path.abspath(__file__)), 'instance', 'test_system.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'pool_size': 50,
+    'max_overflow': 100,
+    'pool_timeout': 60,
+    'pool_recycle': 300
+}
 app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 db = SQLAlchemy(app)
@@ -1141,7 +1161,6 @@ def submit_test():
                                     break
                         elif hasattr(test_config, 'short_answer_questions') and test_config.short_answer_questions:
                             try:
-                                import json
                                 short_answer_config = json.loads(test_config.short_answer_questions)
                                 for q in short_answer_config:
                                     if q['id'] == question_id:
@@ -3352,7 +3371,6 @@ def manage_paper_banks():
         # 如果是PDF，获取页数
         if ext == 'pdf':
             try:
-                from PyPDF2 import PdfReader
                 reader = PdfReader(paper_path)
                 paper_bank.page_count = len(reader.pages)
             except Exception as e:
@@ -3384,7 +3402,8 @@ def manage_paper_banks():
                     'type': str(row.get('题型', '')),
                     'options': str(row.get('选项', '')) if pd.notna(row.get('选项')) else '',
                     'score': int(row.get('分值', 0)) if pd.notna(row.get('分值')) else 0,
-                    'answer': str(row.get('参考答案', '')) if pd.notna(row.get('参考答案')) else ''
+                    'answer': str(row.get('参考答案', '')) if pd.notna(row.get('参考答案')) else '',
+                    'explanation': str(row.get('解析', '')) if pd.notna(row.get('解析')) else ''
                 }
                 if q['num'] > 0 and q['type']:
                     config_list.append(q)
@@ -3421,7 +3440,6 @@ def manage_paper_banks():
 def detect_question_positions(pdf_path, total_questions):
     """检测PDF中题号位置"""
     try:
-        from PyPDF2 import PdfReader
         reader = PdfReader(pdf_path)
         positions = []
         
@@ -3502,7 +3520,8 @@ def paper_preview():
                 'type': str(row.get('题型', '')),
                 'options': str(row.get('选项', '')) if pd.notna(row.get('选项')) else '',
                 'score': int(row.get('分值', 0)) if pd.notna(row.get('分值')) else 0,
-                'answer': str(row.get('参考答案', '')) if pd.notna(row.get('参考答案')) else ''
+                'answer': str(row.get('参考答案', '')) if pd.notna(row.get('参考答案')) else '',
+                'explanation': str(row.get('解析', '')) if pd.notna(row.get('解析')) else ''
             }
             if q['num'] > 0 and q['type']:
                 config_list.append(q)
@@ -3658,7 +3677,6 @@ def update_paper_bank(bank_id):
             
             if ext == 'pdf':
                 try:
-                    from PyPDF2 import PdfReader
                     reader = PdfReader(paper_path)
                     bank.page_count = len(reader.pages)
                 except Exception as e:
@@ -3676,7 +3694,8 @@ def update_paper_bank(bank_id):
                         'type': str(row.get('题型', '')),
                         'options': str(row.get('选项', '')) if pd.notna(row.get('选项')) else '',
                         'score': int(row.get('分值', 0)) if pd.notna(row.get('分值')) else 0,
-                        'answer': str(row.get('参考答案', '')) if pd.notna(row.get('参考答案')) else ''
+                        'answer': str(row.get('参考答案', '')) if pd.notna(row.get('参考答案')) else '',
+                        'explanation': str(row.get('解析', '')) if pd.notna(row.get('解析')) else ''
                     }
                     if q['num'] > 0 and q['type']:
                         config_list.append(q)
@@ -3717,6 +3736,7 @@ def download_excel_template():
         '选项': ['独立|交流|依赖|开放', 'A|B|C|D', '对|错', '', ''],
         '分值': [4, 6, 2, 5, 10],
         '参考答案': ['B', 'ABC', '对|正确|是', '牛顿|Newton、苹果|apple', '见参考答案'],
+        '解析': ['', '', '', '', ''],
         '备注': ['', '', '判断题答案：对、正确、是、√、true、1 或 错、错误、否、×、false、0', '填空题规则：不同空用"、"隔开（全角顿号），同一空多个答案用"|"分隔，如"in|IN、i、1|一"表示第1空填in或IN都正确', '']
     }
     df = pd.DataFrame(template_data)

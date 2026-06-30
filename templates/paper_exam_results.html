@@ -147,6 +147,7 @@
                     html += `</div>`;
                     html += `<div class="card-body">`;
                     html += `<p><strong>正确答案：</strong>${q.answer || '见参考答案'}</p>`;
+                    if (q.explanation) html += `<p><strong>答案解析：</strong>${q.explanation}</p>`;
                     html += `<p><strong>学生作答：</strong>${studentAnswer || '<span class="text-muted">未作答</span>'}</p>`;
                     if (aiResult.feedback) html += `<p><strong>批改反馈：</strong>${aiResult.feedback}</p>`;
                     
